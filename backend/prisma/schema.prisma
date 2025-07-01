@@ -1,0 +1,62 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  owner
+  editor
+  viewer
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  username  String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  documents       Document[]
+  documentAccess  DocumentUser[]
+
+  @@map("users")
+}
+
+model Document {
+  id        String   @id @default(uuid())
+  ownerId   String
+  title     String   @db.VarChar(255)
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  owner           User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  documentUsers   DocumentUser[]
+
+  @@map("documents")
+}
+
+model DocumentUser {
+  documentId String
+  userId     String
+  role       UserRole @default(editor)
+
+  // Relations
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([documentId, userId])
+  @@map("document_users")
+}
+
+ 
