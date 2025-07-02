@@ -5,19 +5,22 @@ import { useSession } from "next-auth/react"
 import { useWindowSize } from "@uidotdev/usehooks"
 import { Header, Sidebar } from "@/components/layouts"
 import { FullScreenLoading } from "@/components/ui"
-import { connectAutoDispatch, setSidebarOpen, setUser, clearUser } from "@/store"
+import { useSelector, useDispatch } from "react-redux"
+import { setSidebarOpen, setUser, clearUser } from "@/store"
 import type { RootState, User } from "@/store"
 
 interface DefaultLayoutProps {
   children: React.ReactNode
-  setSidebarOpen: (open: boolean) => void
-  setUser: (user: User) => void
-  clearUser: () => void
-  isSidebarOpen: boolean
 }
 
 // Helper function to convert NextAuth session user to Redux User
-const sessionUserToReduxUser = (sessionUser: any): User => ({
+const sessionUserToReduxUser = (sessionUser: {
+  id: string
+  email: string
+  username: string
+  token: string
+  expire_at: string
+}): User => ({
   id: sessionUser.id,
   email: sessionUser.email,
   username: sessionUser.username,
@@ -25,13 +28,9 @@ const sessionUserToReduxUser = (sessionUser: any): User => ({
   expire_at: sessionUser.expire_at,
 })
 
-const DefaultLayout = ({ 
-  children, 
-  setSidebarOpen, 
-  setUser,
-  clearUser,
-  isSidebarOpen 
-}: DefaultLayoutProps) => {
+const DefaultLayout = ({ children }: DefaultLayoutProps) => {
+  const dispatch = useDispatch()
+  const isSidebarOpen = useSelector((state: RootState) => state.ui.sidebarOpen)
   const { data: session, status } = useSession()
   const { width } = useWindowSize()
 
@@ -40,23 +39,23 @@ const DefaultLayout = ({
     if (status === "authenticated" && session?.user) {
       // Initialize Redux user state from NextAuth session
       const reduxUser = sessionUserToReduxUser(session.user)
-      setUser(reduxUser)
+      dispatch(setUser(reduxUser))
     } else if (status === "unauthenticated") {
       // Clear Redux user state when logged out
-      clearUser()
+      dispatch(clearUser())
     }
-  }, [session, status, setUser, clearUser])
+  }, [session, status, dispatch])
 
   // Handle responsive behavior with useWindowSize hook
   useEffect(() => {
     if (width !== null) {
       if (width >= 1024) {
-        setSidebarOpen(true) // Keep sidebar open on desktop
+        dispatch(setSidebarOpen(true)) // Keep sidebar open on desktop
       } else {
-        setSidebarOpen(false) // Close sidebar on mobile
+        dispatch(setSidebarOpen(false)) // Close sidebar on mobile
       }
     }
-  }, [width, setSidebarOpen])
+  }, [width, dispatch])
 
   // Show loading for unauthenticated users
   if (status === "loading") {
@@ -71,15 +70,15 @@ const DefaultLayout = ({
   return (
     <div className="h-screen flex overflow-hidden bg-gray-50">
       {/* Sidebar */}
-      <Sidebar 
+              <Sidebar 
         isOpen={isSidebarOpen} 
-        onClose={() => setSidebarOpen(false)}
+        onClose={() => dispatch(setSidebarOpen(false))}
       />
 
       {/* Main content area */}
       <div className="flex flex-col flex-1 overflow-hidden lg:ml-64">
         {/* Header */}
-        <Header onMenuClick={() => setSidebarOpen(true)} />
+        <Header onMenuClick={() => dispatch(setSidebarOpen(true))} />
 
         {/* Page content */}
         <main className="flex-1 relative overflow-y-auto focus:outline-none">
@@ -95,13 +94,4 @@ const DefaultLayout = ({
   )
 }
 
-export default connectAutoDispatch(
-  (state: RootState) => ({
-    isSidebarOpen: state.ui.sidebarOpen,
-  }),
-  {
-    setSidebarOpen,
-    setUser,
-    clearUser,
-  }
-)(DefaultLayout)
+export default DefaultLayout

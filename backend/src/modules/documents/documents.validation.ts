@@ -39,7 +39,7 @@ export const addCollaboratorSchema = z.object({
 // Query parameter validation
 export const getDocumentsQuerySchema = z.object({
   filter: z
-    .enum(['owned', 'accessible'])
+    .enum(['owned', 'accessible', 'shared'])
     .optional(),
   search: z
     .string()
@@ -51,8 +51,19 @@ export const getDocumentsQuerySchema = z.object({
     .string()
     .refine((val) => {
       const num = parseInt(val, 10);
-      return !isNaN(num) && num > 0 && num <= 50;
-    }, 'Limit must be between 1 and 50')
+      return !isNaN(num) && num > 0 && num <= 100;
+    }, 'Limit must be between 1 and 100')
+    .optional(),
+  page: z
+    .string()
+    .refine((val) => {
+      const num = parseInt(val, 10);
+      return !isNaN(num) && num > 0;
+    }, 'Page must be a positive number')
+    .optional(),
+  cursor: z
+    .string()
+    .min(1, 'Cursor cannot be empty')
     .optional(),
 });
 

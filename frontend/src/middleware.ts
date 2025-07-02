@@ -5,11 +5,6 @@ export default auth((req) => {
   const { pathname } = req.nextUrl
   const isAuthenticated = !!req.auth
   
-  // Debug logging in development
-  if (process.env.NODE_ENV === "development") {
-    console.log(`[Middleware] ${pathname} - Auth: ${isAuthenticated}`)
-  }
-  
   // Public routes that don't require authentication
   const publicRoutes = [
     "/auth/signin", 
@@ -28,9 +23,6 @@ export default auth((req) => {
   
   // Require authentication for all other routes
   if (!isAuthenticated) {
-    if (process.env.NODE_ENV === "development") {
-      console.log(`[Middleware] Redirecting ${pathname} to sign-in`)
-    }
     const signInUrl = new URL("/auth/signin", req.url)
     signInUrl.searchParams.set("callbackUrl", pathname)
     return Response.redirect(signInUrl)

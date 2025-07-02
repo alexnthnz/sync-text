@@ -15,19 +15,38 @@ export class DocumentsController {
       const filter = query.filter || 'accessible';
       const search = query.search;
       const limit = query.limit ? parseInt(query.limit, 10) : 20;
+      const page = query.page ? parseInt(query.page, 10) : 1;
+      const cursor = query.cursor;
 
-      const documents = await DocumentsService.getDocuments(
+      const result = await DocumentsService.getDocuments(
         req.userId!,
         filter,
         search,
-        limit
+        limit,
+        page,
+        cursor
       );
       
-      const message = filter === 'owned' 
-        ? 'Owned documents retrieved successfully'
-        : 'Accessible documents retrieved successfully';
+      // Generate appropriate message based on filter
+      let message: string;
+      switch (filter) {
+        case 'owned':
+          message = 'Owned documents retrieved successfully';
+          break;
+        case 'shared':
+          message = 'Shared documents retrieved successfully';
+          break;
+        default:
+          message = 'Accessible documents retrieved successfully';
+      }
       
-      ResponseHelper.success(res, documents, message);
+      ResponseHelper.paginated(
+        res,
+        result.documents,
+        result.total,
+        { page: result.page, limit: result.limit },
+        message
+      );
     } catch (error) {
       console.error('Get documents error:', error);
       ResponseHelper.internalError(res, 'Failed to retrieve documents', error);
@@ -166,6 +185,27 @@ export class DocumentsController {
     } catch (error) {
       console.error('Remove collaborator error:', error);
       ResponseHelper.internalError(res, 'Failed to remove collaborator', error);
+    }
+  }
+
+  /**
+   * Get currently connected users for a document
+   */
+  static async getConnectedUsers(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+
+      // First verify user has access to the document
+      const document = await DocumentsService.getDocumentById(id!, req.userId!);
+      if (!document) {
+        ResponseHelper.notFound(res, 'Document not found or access denied');
+        return;
+      }
+
+      ResponseHelper.success(res, null, 'Connected users retrieved successfully');
+    } catch (error) {
+      console.error('Get connected users error:', error);
+      ResponseHelper.internalError(res, 'Failed to retrieve connected users', error);
     }
   }
 } 

@@ -13,22 +13,44 @@ const prisma = new PrismaClient();
 
 export class DocumentsService {
   /**
-   * Get documents based on filter criteria
+   * Get documents based on filter criteria with pagination
    */
   static async getDocuments(
     userId: string, 
-    filter: 'owned' | 'accessible' = 'accessible',
+    filter: 'owned' | 'accessible' | 'shared' = 'accessible',
     search?: string,
-    limit: number = 20
-  ): Promise<DocumentListResponse[]> {
+    limit: number = 20,
+    page: number = 1,
+    cursor?: string
+  ): Promise<{
+    documents: DocumentListResponse[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
     // Build where clause based on filter
     let whereClause: any;
     
     if (filter === 'owned') {
       // Only documents owned by the user
       whereClause = { ownerId: userId };
+    } else if (filter === 'shared') {
+      // Only documents shared with user (not owned by user)
+      whereClause = {
+        AND: [
+          { ownerId: { not: userId } }, // Not owned by user
+          {
+            documentUsers: {
+              some: {
+                userId: userId,
+                role: { in: ['editor', 'viewer'] }, // Only editor/viewer roles
+              },
+            },
+          },
+        ],
+      };
     } else {
-      // Documents owned by user OR shared with user
+      // 'accessible' - Documents owned by user OR shared with user
       whereClause = {
         OR: [
           { ownerId: userId },
@@ -58,7 +80,17 @@ export class DocumentsService {
       };
     }
 
-    const documents = await prisma.document.findMany({
+    // Get total count for pagination
+    const totalCount = await prisma.document.count({
+      where: whereClause,
+    });
+
+    // Calculate pagination values
+    const currentPage = page || 1;
+    const skip = (currentPage - 1) * limit;
+
+    // Build query options
+    const queryOptions: any = {
       where: whereClause,
       include: {
         owner: {
@@ -75,18 +107,39 @@ export class DocumentsService {
         },
       },
       orderBy: { updatedAt: 'desc' },
-      take: limit,
-    });
+      take: limit + 1, // Take one extra to check if there's a next page
+    };
 
-    return documents.map(doc => ({
+    // Use cursor-based pagination if cursor is provided, otherwise use offset
+    if (cursor) {
+      queryOptions.cursor = { id: cursor };
+      queryOptions.skip = 1; // Skip the cursor itself
+    } else if (page && page > 1) {
+      queryOptions.skip = skip;
+    }
+
+    const documents = await prisma.document.findMany(queryOptions);
+
+    // Check if there's a next page
+    const hasNext = documents.length > limit;
+    const documentList = hasNext ? documents.slice(0, -1) : documents;
+
+    const mappedDocuments = documentList.map(doc => ({
       id: doc.id,
       title: doc.title,
       ownerId: doc.ownerId,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
-      owner: doc.owner,
-      collaboratorsCount: doc._count.documentUsers,
+      owner: (doc as any).owner,
+      collaboratorsCount: (doc as any)._count.documentUsers,
     }));
+
+    return {
+      documents: mappedDocuments,
+      total: totalCount,
+      page: currentPage,
+      limit,
+    };
   }
 
   /**
@@ -250,7 +303,7 @@ export class DocumentsService {
       },
     });
 
-    return {
+    const result = {
       id: document.id,
       title: document.title,
       content: document.content,
@@ -264,6 +317,8 @@ export class DocumentsService {
         user: du.user,
       })),
     };
+    
+    return result;
   }
 
   /**

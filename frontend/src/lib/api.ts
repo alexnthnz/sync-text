@@ -93,11 +93,13 @@ export const authApi = {
 }
 
 export const documentsApi = {
-  getDocuments: (params?: { filter?: "owned" | "accessible"; search?: string; limit?: number }) => {
+  getDocuments: (params?: { filter?: "owned" | "accessible"; search?: string; limit?: number; page?: number; cursor?: string }) => {
     const searchParams = new URLSearchParams()
     if (params?.filter) searchParams.set("filter", params.filter)
     if (params?.search) searchParams.set("search", params.search)
     if (params?.limit) searchParams.set("limit", params.limit.toString())
+    if (params?.page) searchParams.set("page", params.page.toString())
+    if (params?.cursor) searchParams.set("cursor", params.cursor)
     
     const queryString = searchParams.toString()
     return api.get(`/api/documents${queryString ? `?${queryString}` : ""}`)

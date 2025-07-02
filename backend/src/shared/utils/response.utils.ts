@@ -77,9 +77,9 @@ export class ResponseHelper {
       page,
       limit,
       total,
-      total_pages: totalPages,
-      has_next: hasNext,
-      has_prev: hasPrev
+      totalPages,
+      hasNext,
+      hasPrev
     };
 
     const response: SuccessResponse<T[]> = {

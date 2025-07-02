@@ -34,11 +34,10 @@ export default store
 
 // Re-export hooks and utilities
 export * from './hooks'
-export { connectAutoDispatch } from './utils/connectAutoDispatch'
 
 // Export types and specific actions to avoid naming conflicts
 export type { User } from './slices/authSlice'
-export type { Document, DocumentUser } from './slices/documentSlice'
+export type { Document, DocumentPagination, DocumentState } from '@/types'
 
 // Export slice actions with proper namespacing
 export { 
@@ -61,15 +60,9 @@ export {
 } from './slices/uiSlice'
 
 export {
-  setLoading as setDocumentLoading,
   setDocuments,
-  addDocument,
-  updateDocument,
-  deleteDocument,
-  setCurrentDocument,
-  setDocumentUsers,
+  setLoading as setDocumentLoading,
   setError as setDocumentError,
-  clearError as clearDocumentError,
-  setSearchQuery,
-  setSorting,
+  removeDocument,
+  addDocument,
 } from './slices/documentSlice' 

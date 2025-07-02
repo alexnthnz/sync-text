@@ -12,17 +12,7 @@ import {
   type GetDocumentsQueryData,
   type AddCollaboratorFormData,
 } from "@/schemas"
-
-// Common result types
-export type DocumentResult = {
-  success: boolean
-  message: string
-  data?: any
-  errors?: {
-    field?: string
-    message: string
-  }[]
-}
+import type { DocumentResult, DocumentListResult } from "@/types"
 
 // Helper function to get authenticated headers
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -39,7 +29,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 }
 
 // Get documents with filtering and search
-export async function getDocuments(queryData?: GetDocumentsQueryData): Promise<DocumentResult> {
+export async function getDocuments(queryData?: GetDocumentsQueryData): Promise<DocumentListResult> {
   try {
     const session = await auth()
     if (!session?.user?.token) {
@@ -57,6 +47,8 @@ export async function getDocuments(queryData?: GetDocumentsQueryData): Promise<D
     if (validatedQuery.filter) searchParams.set("filter", validatedQuery.filter)
     if (validatedQuery.search) searchParams.set("search", validatedQuery.search)
     if (validatedQuery.limit) searchParams.set("limit", validatedQuery.limit.toString())
+    if (validatedQuery.page) searchParams.set("page", validatedQuery.page.toString())
+    if (validatedQuery.cursor) searchParams.set("cursor", validatedQuery.cursor)
     
     const queryString = searchParams.toString()
     const url = `${Env.BACKEND_URL}/api/documents${queryString ? `?${queryString}` : ""}`
@@ -75,10 +67,22 @@ export async function getDocuments(queryData?: GetDocumentsQueryData): Promise<D
       }
     }
 
+    // Backend now sends camelCase, just map the field names
+    const pagination = result.meta ? {
+      currentPage: result.meta.page || 1,
+      totalPages: result.meta.totalPages || 1,
+      totalCount: result.meta.total || 0,
+      hasNext: result.meta.hasNext || false,
+      hasPrev: result.meta.hasPrev || false,
+    } : null;
+
     return {
       success: true,
-      message: result.message || "Documents retrieved successfully",
-      data: result.data,
+      message: result.message || "Documents retrieved successfully", 
+      data: {
+        documents: result.data || [],
+        pagination
+      },
     }
   } catch (error) {
     console.error("Get documents error:", error)

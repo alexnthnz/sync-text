@@ -29,4 +29,7 @@ router.delete('/:id', validateParams(documentIdParamSchema), DocumentsController
 router.post('/:id/collaborators', validateParams(documentIdParamSchema), validateBody(addCollaboratorSchema), DocumentsController.addCollaborator);
 router.delete('/:id/collaborators/:collaboratorId', validateParams(collaboratorParamSchema), DocumentsController.removeCollaborator);
 
+// WebSocket related routes
+router.get('/:id/connected-users', validateParams(documentIdParamSchema), DocumentsController.getConnectedUsers);
+
 export default router; 

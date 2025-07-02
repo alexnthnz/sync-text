@@ -29,7 +29,7 @@ export const updateDocumentSchema = z.object({
 // Get documents query schema
 export const getDocumentsSchema = z.object({
   filter: z
-    .enum(["owned", "accessible"])
+    .enum(["owned", "accessible", "shared"])
     .optional()
     .default("accessible"),
   search: z
@@ -41,6 +41,13 @@ export const getDocumentsSchema = z.object({
     .max(100, "Limit cannot exceed 100")
     .optional()
     .default(20),
+  page: z
+    .number()
+    .min(1, "Page must be at least 1")
+    .optional(),
+  cursor: z
+    .string()
+    .optional(),
 })
 
 // Add collaborator schema

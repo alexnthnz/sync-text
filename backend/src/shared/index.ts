@@ -13,6 +13,7 @@ export * from './validation/common.validation';
 
 // Services
 export * from './services/redis.service';
+export * from './services/websocket.service';
 
 // Config (re-export for convenience)
 export {

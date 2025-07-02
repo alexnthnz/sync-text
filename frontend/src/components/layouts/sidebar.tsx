@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { 
   Button,
@@ -70,6 +70,7 @@ const secondaryNavigation = [
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [isCollapsed, setIsCollapsed] = useState(false)
 
   return (
@@ -125,9 +126,70 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto p-4">
           <div className="space-y-1">
             {navigation.map((item) => {
-              const isActive = pathname === item.href || (
-                item.href !== "/" && pathname.startsWith(item.href.split('?')[0] + '/')
-              )
+              // More specific active state logic
+              const isActive = (() => {
+                // Parse item URL to get its search params
+                const itemUrl = new URL(item.href, 'http://localhost')
+                const itemPath = itemUrl.pathname
+                const itemParams = itemUrl.searchParams
+                
+                // Handle special cases for document routes
+                if (item.href.startsWith('/documents')) {
+                  // For document detail pages (/documents/[id]), only activate "All Documents"
+                  if (pathname.match(/^\/documents\/[^\/]+$/)) {
+                    return item.href === '/documents' // Only "All Documents" should be active
+                  }
+                  
+                  // For document sub-pages (/documents/[id]/share), only activate "All Documents"  
+                  if (pathname.match(/^\/documents\/[^\/]+\/.+$/)) {
+                    return item.href === '/documents' // Only "All Documents" should be active
+                  }
+                  
+                  // For /documents path, check exact query parameter match
+                  if (pathname === '/documents') {
+                    // Path must match
+                    if (itemPath !== '/documents') {
+                      return false
+                    }
+                    
+                    // If item has no query params and current URL has no query params
+                    if (item.href === '/documents' && !searchParams.toString()) {
+                      return true
+                    }
+                    
+                    // If item has query params, check if they match exactly
+                    if (item.href.includes('?')) {
+                      // Check if all item params match current params
+                      for (const [key, value] of itemParams.entries()) {
+                        if (searchParams.get(key) !== value) {
+                          return false
+                        }
+                      }
+                      
+                      // Check if current has extra params that item doesn't have
+                      for (const [key] of searchParams.entries()) {
+                        if (!itemParams.has(key)) {
+                          return false
+                        }
+                      }
+                      
+                      return true
+                    }
+                  }
+                }
+                
+                // For non-documents routes, use exact match or nested path
+                if (item.href !== "/" && !item.href.startsWith('/documents')) {
+                  return pathname === item.href || pathname.startsWith(item.href + '/')
+                }
+                
+                // Dashboard - only exact match
+                if (item.href === "/") {
+                  return pathname === "/"
+                }
+                
+                return false
+              })()
               const Icon = item.icon
               
               return (
