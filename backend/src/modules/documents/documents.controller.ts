@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { DocumentsService } from './documents.service';
 import { CreateDocumentRequest, UpdateDocumentRequest, AddCollaboratorRequest } from './documents.types';
 import { ResponseHelper } from '../../shared/utils/response.utils';
+import { QueueService } from '../../shared/services/queue.service';
 
 export class DocumentsController {
   /**
@@ -91,24 +92,41 @@ export class DocumentsController {
   }
 
   /**
-   * Update document
+   * Update document (queued)
    */
   static async updateDocument(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
       const { title, content }: UpdateDocumentRequest = req.body;
 
-      const document = await DocumentsService.updateDocument(id!, req.userId!, { title, content });
+      // Add job to queue instead of processing immediately
+      const jobId = await QueueService.addDocumentUpdateJob({
+        documentId: id!,
+        userId: req.userId!,
+        updates: {
+          ...(title !== undefined && { title }),
+          ...(content !== undefined && { content }),
+        },
+        metadata: {
+          clientId: req.headers['x-client-id'] as string,
+          sessionId: req.headers['x-session-id'] as string,
+          timestamp: new Date().toISOString(),
+        },
+      });
 
-      if (!document) {
-        ResponseHelper.notFound(res, 'Document not found or insufficient permissions');
-        return;
-      }
-
-      ResponseHelper.success(res, document, 'Document updated successfully');
+      // Return immediate response with job ID
+      ResponseHelper.success(
+        res, 
+        { 
+          jobId,
+          message: 'Document update queued successfully',
+          status: 'queued'
+        }, 
+        'Document update queued successfully'
+      );
     } catch (error) {
-      console.error('Update document error:', error);
-      ResponseHelper.internalError(res, 'Failed to update document', error);
+      console.error('Queue document update error:', error);
+      ResponseHelper.internalError(res, 'Failed to queue document update', error);
     }
   }
 

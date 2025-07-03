@@ -57,12 +57,10 @@ function RegisterForm() {
 
         if (result.success) {
           setSuccess(result.message)
-          // Redirect to sign in after successful registration
           setTimeout(() => {
             router.push("/auth/signin?message=Registration successful! Please sign in.")
           }, 2000)
         } else {
-          // Handle field-specific errors
           if (result.errors) {
             result.errors.forEach((error) => {
               if (error.field === "email") {

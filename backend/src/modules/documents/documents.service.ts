@@ -1,4 +1,3 @@
-import { PrismaClient } from '@prisma/client';
 import { 
   CreateDocumentRequest, 
   UpdateDocumentRequest, 
@@ -8,8 +7,10 @@ import {
   DocumentCollaborator,
   UserRole
 } from './documents.types';
+import { EditHistoryService } from '../edit-history/edit-history.service';
+import { PrismaService } from '../../shared/services/prisma.service';
 
-const prisma = new PrismaClient();
+const prisma = PrismaService.getClient();
 
 export class DocumentsService {
   /**
@@ -318,6 +319,9 @@ export class DocumentsService {
       })),
     };
     
+    // Edit history is now recorded by the queue worker after successful processing
+    // This ensures edit history is only recorded when the update actually succeeds
+    
     return result;
   }
 
@@ -504,5 +508,34 @@ export class DocumentsService {
     }
 
     return requiredRoles.includes(userRole.role);
+  }
+
+  /**
+   * Record edit history for document changes
+   */
+  private static async recordEditHistory(
+    documentId: string,
+    userId: string,
+    data: UpdateDocumentRequest
+  ): Promise<void> {
+    try {
+      const operation = {
+        type: 'document_update',
+        changes: {
+          title: data.title !== undefined ? { changed: true, value: data.title } : { changed: false },
+          content: data.content !== undefined ? { changed: true, value: data.content } : { changed: false },
+        },
+        timestamp: new Date().toISOString(),
+      };
+
+      await EditHistoryService.createEditHistory(userId, {
+        documentId,
+        operation,
+        version: Date.now(), // Use timestamp as version
+      });
+    } catch (error) {
+      // Log error but don't fail the document update
+      console.error('Failed to record edit history:', error);
+    }
   }
 } 

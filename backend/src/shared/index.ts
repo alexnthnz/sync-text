@@ -17,6 +17,8 @@ export * from './services/websocket.service';
 export * from './services/rate-limit.service';
 export * from './services/active-sessions.service';
 export * from './services/redis-pubsub.service';
+export * from './services/queue.service';
+export * from './services/queue-worker.service';
 
 // Config (re-export for convenience)
 export {

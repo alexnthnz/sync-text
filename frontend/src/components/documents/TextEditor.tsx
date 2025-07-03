@@ -138,13 +138,6 @@ export function TextEditor({ documentId, initialContent, onSaveAction, onLoadAct
       }
     }
 
-    // Set proper height for the editor
-    const editorElement = quillRefInternal.current.root.querySelector('.ql-editor') as HTMLElement
-    if (editorElement) {
-      editorElement.style.minHeight = '550px'
-      editorElement.style.padding = '20px'
-    }
-
     // Set user information in awareness before creating QuillBinding
     const userColor = `hsl(${Math.random() * 360}, 70%, 50%)`;
     providerRef.current.awareness.setLocalStateField('user', {

@@ -3,17 +3,18 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { createServer } from 'http';
-import { PrismaClient } from '@prisma/client';
 
 // Import config and validate
 import config, { validateConfig, server, isDevelopment } from './config';
 import { RedisService, WebSocketService, ActiveSessionsService, RedisPubSubService } from './shared';
+import { QueueWorkerService } from './shared/services/queue-worker.service';
+import { PrismaService } from './shared/services/prisma.service';
 
 // Validate configuration on startup
 validateConfig();
 
 // Initialize Prisma Client
-export const prisma = new PrismaClient();
+export const prisma = PrismaService.getClient();
 
 // Initialize Redis
 async function initializeRedis() {
@@ -29,6 +30,21 @@ async function initializeRedis() {
 
 // Initialize Redis on startup
 initializeRedis();
+
+// Initialize Queue Worker
+async function initializeQueueWorker() {
+  try {
+    // Wait a bit for Redis to be ready
+    setTimeout(() => {
+      QueueWorkerService.start();
+      console.log('✅ Queue worker started');
+    }, 2000);
+  } catch (error) {
+    console.error('❌ Queue worker initialization failed:', error);
+  }
+}
+
+initializeQueueWorker();
 
 // Import routes
 import apiRoutes from './routes';
@@ -108,8 +124,11 @@ app.use('*', (req, res) => {
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully');
   
+  // Stop queue worker
+  QueueWorkerService.stop();
+  
   await Promise.all([
-    prisma.$disconnect(),
+    PrismaService.disconnect(),
     RedisService.close().catch(err => console.warn('Redis close error:', err)),
     RedisPubSubService.close().catch(err => console.warn('Redis PubSub close error:', err)),
     webSocketService.close().catch(err => console.warn('WebSocket close error:', err))
@@ -120,8 +139,11 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully');
   
+  // Stop queue worker
+  QueueWorkerService.stop();
+  
   await Promise.all([
-    prisma.$disconnect(),
+    PrismaService.disconnect(),
     RedisService.close().catch(err => console.warn('Redis close error:', err)),
     RedisPubSubService.close().catch(err => console.warn('Redis PubSub close error:', err)),
     webSocketService.close().catch(err => console.warn('WebSocket close error:', err))

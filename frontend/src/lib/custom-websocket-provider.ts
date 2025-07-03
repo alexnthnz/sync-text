@@ -141,8 +141,6 @@ export class CustomWebsocketProvider {
     // Create the WebSocket URL with authentication
     const wsUrl = `${this.url}/ws?token=${encodeURIComponent(this.token)}`;
     
-    console.log('Connecting to WebSocket with URL:', wsUrl.replace(this.token, '[TOKEN]'));
-    
     // Create WebSocket connection manually to ensure authentication
     this.ws = new WebSocket(wsUrl);
 

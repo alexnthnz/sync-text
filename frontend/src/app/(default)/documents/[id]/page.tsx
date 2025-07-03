@@ -65,7 +65,6 @@ export default function DocumentEditorPage() {
     [documentId],
   );
 
-  // Handle manual save button click
   const handleManualSave = useCallback(async () => {
     if (!document) return;
 
@@ -99,18 +98,15 @@ export default function DocumentEditorPage() {
     setUsersInDocument(users);
   }, []);
 
-  // Auto-save interval - save every 10 seconds
   useEffect(() => {
     const autoSaveInterval = setInterval(() => {
       if (manualSaveRef.current && document) {
         manualSaveRef.current().catch((error) => {
           console.error('Auto-save failed:', error);
-          // Don't show error to user for auto-save failures
         });
       }
-    }, 10000); // 10 seconds
+    }, 10000);
 
-    // Cleanup interval on unmount or when document changes
     return () => {
       clearInterval(autoSaveInterval);
     };
@@ -131,7 +127,6 @@ export default function DocumentEditorPage() {
   return (
     <TooltipProvider>
       <div className="space-y-6">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="sm" onClick={handleBack}>
@@ -141,7 +136,6 @@ export default function DocumentEditorPage() {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Collaborators */}
             {usersInDocument.length > 0 && (
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1">

@@ -36,10 +36,8 @@ const DocumentSharePage = () => {
   } | null>(null)
   const [isRemoving, setIsRemoving] = useState(false)
 
-  // Check if current user is the document owner
   const isOwner = currentUser && document && currentUser.id === document.ownerId
 
-  // Fetch document
   const fetchDocument = useCallback(async () => {
     if (!documentId) return
 
@@ -57,7 +55,6 @@ const DocumentSharePage = () => {
     setIsLoading(false)
   }, [documentId])
 
-  // Add collaborator
   const handleAddCollaborator = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -73,7 +70,7 @@ const DocumentSharePage = () => {
     
     if (result.success) {
       setNewCollaboratorEmail("")
-      fetchDocument() // Refresh the document data
+      fetchDocument()
     } else {
       setError(result.message)
     }
@@ -81,7 +78,6 @@ const DocumentSharePage = () => {
     setIsAddingCollaborator(false)
   }
 
-  // Remove collaborator
   const handleRemoveCollaborator = async () => {
     if (!collaboratorToRemove) return
 
@@ -92,7 +88,7 @@ const DocumentSharePage = () => {
     if (result.success) {
       setRemoveDialogOpen(false)
       setCollaboratorToRemove(null)
-      fetchDocument() // Refresh the document data
+      fetchDocument()
     } else {
       setError(result.message)
     }
@@ -100,12 +96,10 @@ const DocumentSharePage = () => {
     setIsRemoving(false)
   }
 
-  // Initial load
   useEffect(() => {
     fetchDocument()
   }, [fetchDocument])
 
-  // Navigation handlers
   const handleBackToDocument = () => router.push(`/documents/${documentId}`)
   const handleBackToDocuments = () => router.push('/documents')
 
@@ -121,12 +115,10 @@ const DocumentSharePage = () => {
     return <SharePageAccessDenied onBackToDocument={handleBackToDocument} />
   }
 
-  // Check if user is authorized to access this share page (only owners can manage sharing)
   if (!isOwner) {
     return <SharePageAccessDenied onBackToDocument={handleBackToDocument} />
   }
 
-  // Use collaborators from backend response
   const collaboratorsList = document.collaborators || []
 
   return (

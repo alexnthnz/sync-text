@@ -27,6 +27,7 @@ model User {
   // Relations
   documents       Document[]
   documentAccess  DocumentUser[]
+  editHistory     EditHistory[]
 
   @@map("users")
 }
@@ -42,6 +43,7 @@ model Document {
   // Relations
   owner           User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   documentUsers   DocumentUser[]
+  editHistory     EditHistory[]
 
   @@map("documents")
 }
@@ -57,6 +59,21 @@ model DocumentUser {
 
   @@id([documentId, userId])
   @@map("document_users")
+}
+
+model EditHistory {
+  id         String   @id @default(uuid())
+  documentId String
+  userId     String
+  operation  Json
+  timestamp  DateTime @default(now())
+  version    BigInt?
+
+  // Relations
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("edit_history")
 }
 
  
