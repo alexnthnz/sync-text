@@ -9,6 +9,10 @@ import {
 interface WebSocketProviderConfig {
   yjsDebounceMs?: number;
   awarenessDebounceMs?: number;
+  maxYjsBatchSize?: number;
+  maxAwarenessBatchSize?: number;
+  enableThrottling?: boolean;
+  throttleIntervalMs?: number;
 }
 
 export class CustomWebsocketProvider {
@@ -21,16 +25,22 @@ export class CustomWebsocketProvider {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private callbacks: Map<string, (data: any) => void>; 
   private isIntentionallyDisconnected: boolean = false;
+  private isTabHidden: boolean = false;
   
-  // Debouncing properties
   private yjsUpdateTimeout: NodeJS.Timeout | null = null;
   private awarenessUpdateTimeout: NodeJS.Timeout | null = null;
   private pendingYjsUpdates: Uint8Array[] = [];
   private pendingAwarenessUpdates: Uint8Array[] = [];
   
-  // Debouncing configuration
+  private lastYjsSendTime: number = 0;
+  private lastAwarenessSendTime: number = 0;
+  
   private readonly YJS_DEBOUNCE_MS: number;
   private readonly AWARENESS_DEBOUNCE_MS: number;
+  private readonly MAX_YJS_BATCH_SIZE: number;
+  private readonly MAX_AWARENESS_BATCH_SIZE: number;
+  private readonly ENABLE_THROTTLING: boolean;
+  private readonly THROTTLE_INTERVAL_MS: number;
 
   constructor(url: string, roomName: string, ydoc: Y.Doc, token: string, config?: WebSocketProviderConfig) {
     this.url = url;
@@ -41,50 +51,72 @@ export class CustomWebsocketProvider {
     this.callbacks = new Map();
     this.isIntentionallyDisconnected = false;
     
-    // Set configuration with defaults
     this.YJS_DEBOUNCE_MS = config?.yjsDebounceMs ?? 100;
     this.AWARENESS_DEBOUNCE_MS = config?.awarenessDebounceMs ?? 50;
+    this.MAX_YJS_BATCH_SIZE = config?.maxYjsBatchSize ?? 100;
+    this.MAX_AWARENESS_BATCH_SIZE = config?.maxAwarenessBatchSize ?? 100;
+    this.ENABLE_THROTTLING = config?.enableThrottling ?? false;
+    this.THROTTLE_INTERVAL_MS = config?.throttleIntervalMs ?? 1000;
 
     this.connect();
 
-    // Set up debounced update handlers
     this.ydoc.on('update', this.onUpdate.bind(this));
     this.awareness.on('update', this.onAwarenessUpdate.bind(this));
   }
 
   private onUpdate(update: Uint8Array) {
-    // Add update to pending queue
     this.pendingYjsUpdates.push(update);
     
-    // Clear existing timeout
+    if (this.pendingYjsUpdates.length >= this.MAX_YJS_BATCH_SIZE) {
+      this.sendPendingYjsUpdates();
+      return;
+    }
+    
     if (this.yjsUpdateTimeout) {
       clearTimeout(this.yjsUpdateTimeout);
     }
     
-    // Set new timeout to send updates
     this.yjsUpdateTimeout = setTimeout(() => {
       this.sendPendingYjsUpdates();
     }, this.YJS_DEBOUNCE_MS);
   }
 
-  private sendPendingYjsUpdates() {
+  private sendPendingYjsUpdates() {    
     if (this.pendingYjsUpdates.length === 0 || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return;
     }
 
-    // Merge all pending updates into a single update
-    const mergedUpdate = Y.mergeUpdates(this.pendingYjsUpdates);
+    if (this.ENABLE_THROTTLING) {
+      const now = Date.now();
+      const timeSinceLastSend = now - this.lastYjsSendTime;
+      
+      if (timeSinceLastSend < this.THROTTLE_INTERVAL_MS) {
+        if (this.yjsUpdateTimeout) {
+          clearTimeout(this.yjsUpdateTimeout);
+        }
+        this.yjsUpdateTimeout = setTimeout(() => {
+          this.sendPendingYjsUpdates();
+        }, this.THROTTLE_INTERVAL_MS - timeSinceLastSend);
+        return;
+      }
+      
+      this.lastYjsSendTime = now;
+    }
+
+    try {
+      const mergedUpdate = Y.mergeUpdates(this.pendingYjsUpdates);
+      
+      this.ws.send(JSON.stringify({
+        type: 'yjs-update',
+        data: {
+          documentId: this.roomName,
+          update: toBase64(mergedUpdate),
+        },
+      }));
+    } catch (error) {
+      console.error('Failed to send yjs-update:', error);
+    }
     
-    // Send the merged update through the WebSocket
-    this.ws.send(JSON.stringify({
-      type: 'yjs-update',
-      data: {
-        documentId: this.roomName,
-        update: toBase64(mergedUpdate),
-      },
-    }));
-    
-    // Clear pending updates
     this.pendingYjsUpdates = [];
     this.yjsUpdateTimeout = null;
   }
@@ -98,17 +130,19 @@ export class CustomWebsocketProvider {
     updated: number[];
     removed: number[];
   }) {
-    // Add awareness update to pending queue
     const changedClients = added.concat(updated).concat(removed);
     const awarenessUpdate = awarenessProtocol.encodeAwarenessUpdate(this.awareness, changedClients);
     this.pendingAwarenessUpdates.push(awarenessUpdate);
+
+    if (this.pendingAwarenessUpdates.length >= this.MAX_AWARENESS_BATCH_SIZE) {
+      this.sendPendingAwarenessUpdates();
+      return;
+    }
     
-    // Clear existing timeout
     if (this.awarenessUpdateTimeout) {
       clearTimeout(this.awarenessUpdateTimeout);
     }
     
-    // Set new timeout to send updates
     this.awarenessUpdateTimeout = setTimeout(() => {
       this.sendPendingAwarenessUpdates();
     }, this.AWARENESS_DEBOUNCE_MS);
@@ -119,36 +153,49 @@ export class CustomWebsocketProvider {
       return;
     }
 
-    // For awareness updates, we'll send the most recent one since they represent current state
-    const latestUpdate = this.pendingAwarenessUpdates[this.pendingAwarenessUpdates.length - 1];
+    if (this.ENABLE_THROTTLING) {
+      const now = Date.now();
+      const timeSinceLastSend = now - this.lastAwarenessSendTime;
+      
+      if (timeSinceLastSend < this.THROTTLE_INTERVAL_MS) {
+        if (this.awarenessUpdateTimeout) {
+          clearTimeout(this.awarenessUpdateTimeout);
+        }
+        this.awarenessUpdateTimeout = setTimeout(() => {
+          this.sendPendingAwarenessUpdates();
+        }, this.THROTTLE_INTERVAL_MS - timeSinceLastSend);
+        return;
+      }
+      
+      this.lastAwarenessSendTime = now;
+    }
+
+    try {
+      const latestUpdate = this.pendingAwarenessUpdates[this.pendingAwarenessUpdates.length - 1];
+      
+      const message = {
+        type: 'awareness-update',
+        data: {
+          documentId: this.roomName,
+          update: toBase64(latestUpdate),
+        },
+      };
+      
+      this.ws.send(JSON.stringify(message));
+    } catch (error) {
+      console.error('Failed to send awareness-update:', error);
+    }
     
-    const message = {
-      type: 'awareness-update',
-      data: {
-        documentId: this.roomName,
-        update: toBase64(latestUpdate),
-      },
-    };
-    
-    this.ws.send(JSON.stringify(message));
-    
-    // Clear pending updates
     this.pendingAwarenessUpdates = [];
     this.awarenessUpdateTimeout = null;
   }
 
   connect() {
-    // Create the WebSocket URL with authentication
     const wsUrl = `${this.url}/ws?token=${encodeURIComponent(this.token)}`;
     
-    // Create WebSocket connection manually to ensure authentication
     this.ws = new WebSocket(wsUrl);
 
-    // Set up event handlers
     this.ws.onopen = () => {
-      console.log('WebSocket connected');
-      
-      // Join the document room
       if (this.ws) {
         this.ws.send(JSON.stringify({
           type: 'join-document',
@@ -156,26 +203,19 @@ export class CustomWebsocketProvider {
             documentId: this.roomName
           },
         }));
-        console.log('Sent join-document message');
       }
     };
 
-    // Handle connection errors
     this.ws.onerror = (event) => {
       console.error('WebSocket error:', event);
     };
 
-    // Handle connection close
     this.ws.onclose = (event) => {
-      console.log('WebSocket disconnected. Code:', event.code, 'Reason:', event.reason);
-      if (!this.isIntentionallyDisconnected) {
+      if (!this.isIntentionallyDisconnected && !this.isTabHidden) {
         setTimeout(() => this.connect(), 1000);
-      } else {
-        console.log('Not reconnecting - user intentionally left the document');
       }
     };
 
-    // Set up custom message handling by overriding the WebSocket's message handler
     this.ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
@@ -188,7 +228,6 @@ export class CustomWebsocketProvider {
                 break;
               }
               
-              // Validate base64 string
               const updateData = message.data.update;
               if (typeof updateData !== 'string' || updateData.length === 0) {
                 console.warn('yjs-update has invalid update data format');
@@ -209,7 +248,6 @@ export class CustomWebsocketProvider {
                 break;
               }
               
-              // Validate base64 string
               const awarenessData = message.data.update;
               if (typeof awarenessData !== 'string' || awarenessData.length === 0) {
                 break;
@@ -267,11 +305,9 @@ export class CustomWebsocketProvider {
         }
       case 'connected':
         {
-          console.log('WebSocket connection confirmed');
           break;
         }
       default:
-        // Let the WebSocket handle standard Yjs messages
         break;
     }
   }
@@ -288,7 +324,6 @@ export class CustomWebsocketProvider {
   disconnect() {
     this.isIntentionallyDisconnected = true;
     
-    // Send any pending updates before disconnecting
     if (this.pendingYjsUpdates.length > 0) {
       this.sendPendingYjsUpdates();
     }
@@ -296,7 +331,35 @@ export class CustomWebsocketProvider {
       this.sendPendingAwarenessUpdates();
     }
     
-    // Clear any remaining timeouts
+    if (this.yjsUpdateTimeout) {
+      clearTimeout(this.yjsUpdateTimeout);
+      this.yjsUpdateTimeout = null;
+    }
+    if (this.awarenessUpdateTimeout) {
+      clearTimeout(this.awarenessUpdateTimeout);
+      this.awarenessUpdateTimeout = null;
+    }
+    
+    if (this.ws) {
+      this.ws.close();
+    }
+    
+    this.ydoc.off('update', this.onUpdate);
+    this.awareness.off('update', this.onAwarenessUpdate);
+  }
+
+  /**
+   * Temporarily disconnect without marking as intentionally disconnected
+   * This allows for reconnection when needed
+   */
+  temporaryDisconnect() {
+    if (this.pendingYjsUpdates.length > 0) {
+      this.sendPendingYjsUpdates();
+    }
+    if (this.pendingAwarenessUpdates.length > 0) {
+      this.sendPendingAwarenessUpdates();
+    }
+    
     if (this.yjsUpdateTimeout) {
       clearTimeout(this.yjsUpdateTimeout);
       this.yjsUpdateTimeout = null;
@@ -326,6 +389,52 @@ export class CustomWebsocketProvider {
     }
   }
 
+  /**
+   * Check if the WebSocket connection is open
+   */
+  isConnected(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  /**
+   * Handle tab visibility change
+   */
+  setTabHidden(hidden: boolean) {
+    this.isTabHidden = hidden;
+    if (!hidden && !this.isConnected() && !this.isIntentionallyDisconnected) {
+      this.connect();
+    }
+  }
+
+  /**
+   * Get current debouncing statistics
+   */
+  getDebouncingStats() {
+    return {
+      yjs: {
+        pendingUpdates: this.pendingYjsUpdates.length,
+        lastSendTime: this.lastYjsSendTime,
+        debounceMs: this.YJS_DEBOUNCE_MS,
+        maxBatchSize: this.MAX_YJS_BATCH_SIZE,
+        throttlingEnabled: this.ENABLE_THROTTLING,
+        throttleIntervalMs: this.THROTTLE_INTERVAL_MS,
+      },
+      awareness: {
+        pendingUpdates: this.pendingAwarenessUpdates.length,
+        lastSendTime: this.lastAwarenessSendTime,
+        debounceMs: this.AWARENESS_DEBOUNCE_MS,
+        maxBatchSize: this.MAX_AWARENESS_BATCH_SIZE,
+        throttlingEnabled: this.ENABLE_THROTTLING,
+        throttleIntervalMs: this.THROTTLE_INTERVAL_MS,
+      },
+      connection: {
+        isConnected: this.isConnected(),
+        isTabHidden: this.isTabHidden,
+        isIntentionallyDisconnected: this.isIntentionallyDisconnected,
+      }
+    };
+  }
+
   leaveDocument() {
     this.isIntentionallyDisconnected = true;
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -336,7 +445,66 @@ export class CustomWebsocketProvider {
         },
       };
       this.ws.send(JSON.stringify(leaveMessage));
-      console.log('Sent leave-document message');
+    }
+  }
+
+  /**
+   * Create optimized configuration for different use cases
+   */
+  static createOptimizedConfig(type: 'performance' | 'realtime' | 'balanced' = 'balanced'): WebSocketProviderConfig {
+    switch (type) {
+      case 'performance':
+        return {
+          yjsDebounceMs: 500,
+          awarenessDebounceMs: 500,
+          maxYjsBatchSize: 100,
+          maxAwarenessBatchSize: 50,
+          enableThrottling: true,
+          throttleIntervalMs: 1000,
+        };
+      case 'realtime':
+        return {
+          yjsDebounceMs: 50,
+          awarenessDebounceMs: 25,
+          maxYjsBatchSize: 10,
+          maxAwarenessBatchSize: 5,
+          enableThrottling: false,
+          throttleIntervalMs: 100,
+        };
+      case 'balanced':
+      default:
+        return {
+          yjsDebounceMs: 200,
+          awarenessDebounceMs: 100,
+          maxYjsBatchSize: 50,
+          maxAwarenessBatchSize: 20,
+          enableThrottling: true,
+          throttleIntervalMs: 500,
+        };
+    }
+  }
+
+  /**
+   * Update debouncing configuration at runtime
+   */
+  updateConfig(newConfig: Partial<WebSocketProviderConfig>) {
+    if (newConfig.yjsDebounceMs !== undefined) {
+      (this as any).YJS_DEBOUNCE_MS = newConfig.yjsDebounceMs;
+    }
+    if (newConfig.awarenessDebounceMs !== undefined) {
+      (this as any).AWARENESS_DEBOUNCE_MS = newConfig.awarenessDebounceMs;
+    }
+    if (newConfig.maxYjsBatchSize !== undefined) {
+      (this as any).MAX_YJS_BATCH_SIZE = newConfig.maxYjsBatchSize;
+    }
+    if (newConfig.maxAwarenessBatchSize !== undefined) {
+      (this as any).MAX_AWARENESS_BATCH_SIZE = newConfig.maxAwarenessBatchSize;
+    }
+    if (newConfig.enableThrottling !== undefined) {
+      (this as any).ENABLE_THROTTLING = newConfig.enableThrottling;
+    }
+    if (newConfig.throttleIntervalMs !== undefined) {
+      (this as any).THROTTLE_INTERVAL_MS = newConfig.throttleIntervalMs;
     }
   }
 } 

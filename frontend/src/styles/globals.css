@@ -125,9 +125,34 @@
 @layer components {
   .ql-toolbar.ql-snow {
     border-radius: 5px;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    background-color: #f0f0f0;
+  }
+
+  .ql-container.ql-snow {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    border-radius: 5px;
   }
 
   .ql-editor {
-    min-height: 500px;
+    min-height: calc(100vh - 250px);
+    background-color: #ffffff;
+  }
+
+  /* Prevent duplicate toolbars */
+  .ql-toolbar.ql-snow + .ql-toolbar.ql-snow {
+    display: none;
+  }
+
+  /* Ensure proper editor container styling */
+  .ql-container {
+    font-family: inherit;
+  }
+
+  /* Fix any potential z-index issues */
+  .ql-toolbar {
+    z-index: 1;
   }
 }

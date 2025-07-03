@@ -28,9 +28,8 @@ export interface WebSocketMessage {
 
 export class WebSocketService {
   private wss: WebSocketServer | null = null;
-  private socketConnections: Map<string, AuthenticatedWebSocket> = new Map(); // socket_id -> socket
-
-  // Rate limiting configuration
+  private socketConnections: Map<string, AuthenticatedWebSocket> = new Map(); 
+  
   private readonly rateLimitConfigs: Map<string, RateLimitConfig> = new Map([
     ['yjs-update', { maxMessages: 50, windowMs: 1000, blockDurationMs: 5000 }],
     ['awareness-update', { maxMessages: 30, windowMs: 1000, blockDurationMs: 3000 }],
@@ -48,21 +47,17 @@ export class WebSocketService {
 
     this.wss.on('connection', this.handleConnection.bind(this));
 
-    // Set up periodic cleanup of Redis rate limit data
     setInterval(() => {
       RateLimitService.cleanupExpiredData().catch(error => {
         console.error('Failed to cleanup rate limit data:', error);
       });
-    }, 300000); // Clean up every 5 minutes
+    }, 300000); 
 
-    // Set up periodic cleanup of stale sessions
     setInterval(() => {
       ActiveSessionsService.cleanupStaleSessions().catch(error => {
         console.error('Failed to cleanup stale sessions:', error);
       });
-    }, 600000); // Clean up every 10 minutes
-
-    console.log('✅ WebSocket server initialized on /ws');
+    }, 600000); 
   }
 
   /**
@@ -84,7 +79,6 @@ export class WebSocketService {
         return false;
       }
 
-      // Store user info for later use
       info.req.userId = decoded.userId;
       info.req.username = decoded.username || decoded.email?.split('@')[0];
 
@@ -102,18 +96,15 @@ export class WebSocketService {
     const userId = req.userId;
     const username = req.username;
 
-    // Set user info on socket
     ws.userId = userId;
     ws.username = username;
 
-    // Generate socket_id and store socket reference
     const socketId = this.generateSocketId(ws);
     ws.socketId = socketId;
     this.socketConnections.set(socketId, ws);
 
     console.log(`✅ WebSocket connected: ${username} (${userId}) with socket_id: ${socketId}`);
 
-    // Handle messages
     ws.on('message', async (data: Buffer) => {
       try {
         const message: WebSocketMessage = JSON.parse(data.toString());
@@ -124,17 +115,14 @@ export class WebSocketService {
       }
     });
 
-    // Handle disconnect
     ws.on('close', () => {
       this.handleDisconnect(ws);
     });
 
-    // Handle errors
     ws.on('error', error => {
       console.error(`❌ WebSocket error for user ${username}:`, error);
     });
 
-    // Send connection confirmation
     this.sendMessage(ws, 'connected', { message: 'WebSocket connected successfully' });
   }
 
@@ -147,7 +135,6 @@ export class WebSocketService {
   ): Promise<void> {
     const { type, data } = message;
 
-    // Check rate limiting for spam-prone message types
     if (ws.userId && this.rateLimitConfigs.has(type)) {
       const config = this.rateLimitConfigs.get(type)!;
       const rateLimitResult = await RateLimitService.isRateLimited(ws.userId, type, config);
@@ -188,7 +175,6 @@ export class WebSocketService {
         return;
     }
 
-    // Increment rate limit counter for processed messages
     if (ws.userId && this.rateLimitConfigs.has(type)) {
       await RateLimitService.incrementRateLimit(ws.userId, type);
     }
@@ -203,32 +189,26 @@ export class WebSocketService {
       return;
     }
 
-    // Leave current document if any
     if (ws.documentId) {
       await this.handleLeaveDocument(ws);
     }
 
-    // Set current document
     ws.documentId = documentId;
 
-    // Store user in Redis session hash
     if (!ws.socketId) {
       this.sendError(ws, 'Socket ID not found');
       return;
     }
     await ActiveSessionsService.addSession(documentId, ws.userId, ws.username, ws.socketId);
 
-    // Publish user-joined event to channel
     await RedisPubSubService.publish(`channel:${documentId}`, {
       type: 'user-joined',
       data: { user: { userId: ws.userId, username: ws.username } }
     });
     console.log(`📡 Published user-joined event for ${ws.username} to channel:${documentId}`);
 
-    // Subscribe to channel (idempotent)
     await RedisPubSubService.subscribe(`channel:${documentId}`, this.handlePubSubMessage.bind(this));
 
-    // Send current users list to the new user
     const sessions = await ActiveSessionsService.getDocumentSessions(documentId);
     const users = sessions.map(session => ({
       userId: session.userId,
@@ -248,10 +228,8 @@ export class WebSocketService {
 
     const documentId = ws.documentId;
 
-    // Remove user from document sessions
     await ActiveSessionsService.removeSession(documentId, ws.userId);
 
-    // Publish user-left event to channel
     await RedisPubSubService.publish(`channel:${documentId}`, {
       type: 'user-left',
       data: { user: { userId: ws.userId, username: ws.username } }
@@ -261,10 +239,8 @@ export class WebSocketService {
     console.log(`👤 User ${ws.username} left document ${documentId}`);
     delete ws.documentId;
 
-    // Check if there are any remaining sessions in the document
     const remainingSessions = await ActiveSessionsService.getDocumentSessionCount(documentId);
     if (remainingSessions === 0) {
-      // Unsubscribe from channel if no users remain in the document
       await RedisPubSubService.unsubscribe(`channel:${documentId}`);
       console.log(`📡 Unsubscribed from channel:${documentId} - no users remaining`);
     }
@@ -279,7 +255,6 @@ export class WebSocketService {
       return;
     }
 
-    // Broadcast Yjs update to other users in the document
     this.broadcastToDocument(
       ws.documentId,
       'yjs-update',
@@ -304,7 +279,6 @@ export class WebSocketService {
       return;
     }
 
-    // Broadcast awareness update to other users in the document
     this.broadcastToDocument(
       ws.documentId,
       'awareness-update',
@@ -323,10 +297,8 @@ export class WebSocketService {
     if (ws.userId && ws.socketId) {
       console.log(`❌ WebSocket disconnected: ${ws.username} (${ws.userId}) with socket_id: ${ws.socketId}`);
 
-      // Remove from socket connections
       this.socketConnections.delete(ws.socketId);
 
-      // Leave document
       this.handleLeaveDocument(ws);
     }
   }
@@ -365,7 +337,6 @@ export class WebSocketService {
         continue;
       }
 
-      // Find socket by socket_id instead of userId
       const socket = this.socketConnections.get(session.socketId);
       if (socket && socket.readyState === WebSocket.OPEN) {
         this.sendMessage(socket, type, data);
@@ -466,7 +437,6 @@ export class WebSocketService {
     const documentId = channel.replace('channel:', '');
     console.log(`📡 Received Pub/Sub message: ${message.type} for document ${documentId}`);
     
-    // Relay to all local sockets for this document
     for (const [, socket] of this.socketConnections.entries()) {
       if (socket.documentId === documentId && socket.readyState === WebSocket.OPEN) {
         this.sendMessage(socket, message.type, message.data);

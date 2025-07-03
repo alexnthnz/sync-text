@@ -82,13 +82,13 @@ export default function DocumentEditorPage() {
     }
   }, [document]);
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     router.push("/documents");
-  };
+  }, [router]);
 
-  const handleShare = () => {
+  const handleShare = useCallback(() => {
     router.push(`/documents/${documentId}/share`);
-  };
+  }, [router, documentId]);
 
   const handleEditorLoad = useCallback(() => {
     // Editor loaded successfully
@@ -100,7 +100,7 @@ export default function DocumentEditorPage() {
 
   useEffect(() => {
     const autoSaveInterval = setInterval(() => {
-      if (manualSaveRef.current && document) {
+      if (manualSaveRef.current) {
         manualSaveRef.current().catch((error) => {
           console.error('Auto-save failed:', error);
         });
@@ -110,7 +110,7 @@ export default function DocumentEditorPage() {
     return () => {
       clearInterval(autoSaveInterval);
     };
-  }, [document]);
+  }, []); // Remove document dependency to prevent re-renders
 
   if (isLoading) {
     return <div className="p-4 text-center">Loading document...</div>;
@@ -198,6 +198,7 @@ export default function DocumentEditorPage() {
         </div>
 
         <TextEditor
+          key={documentId as string}
           documentId={documentId as string}
           initialContent={document.content}
           onSaveAction={handleSaveContent}

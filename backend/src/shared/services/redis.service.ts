@@ -18,26 +18,22 @@ export class RedisService {
         database: redisConfig.db,
       };
 
-      // Only add password if it exists
       if (redisConfig.password) {
         clientConfig.password = redisConfig.password;
       }
 
       this.client = createClient(clientConfig);
 
-      // Handle Redis connection events
       this.client.on('error', (err) => {
         console.error('Redis Client Error:', err);
         this.isConnected = false;
       });
 
       this.client.on('connect', () => {
-        console.log('✅ Redis connected successfully');
         this.isConnected = true;
       });
 
       this.client.on('disconnect', () => {
-        console.log('⚠️  Redis disconnected');
         this.isConnected = false;
       });
 

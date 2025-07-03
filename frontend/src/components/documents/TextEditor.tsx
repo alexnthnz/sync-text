@@ -1,14 +1,18 @@
 "use client"
 
-import { useEffect, useRef, useState, useCallback, RefObject } from 'react'
+import { useEffect, useRef, useState, useCallback, RefObject, memo } from 'react'
 import Quill from 'quill'
 import 'quill/dist/quill.snow.css'
 import * as Y from 'yjs'
 import { QuillBinding } from 'y-quill'
 import { Env } from '@/lib/env'
 import { CustomWebsocketProvider } from '@/lib/custom-websocket-provider'
-import { useSession } from 'next-auth/react'
+import { useAppSelector } from '@/store/hooks'
 import QuillCursors from 'quill-cursors'
+
+if (!Quill.imports['modules/cursors']) {
+  Quill.register('modules/cursors', QuillCursors);
+}
 
 interface TextEditorProps {
   documentId: string
@@ -26,16 +30,31 @@ interface DocumentUser {
   username: string
 }
 
-export function TextEditor({ documentId, initialContent, onSaveAction, onLoadAction, onUsersChange, quillRef, flushUpdatesRef, manualSaveRef }: TextEditorProps) {
+function TextEditorComponent({ documentId, initialContent, onSaveAction, onLoadAction, onUsersChange, quillRef, flushUpdatesRef, manualSaveRef }: TextEditorProps) {
+  const onSaveActionRef = useRef(onSaveAction);
+  const onLoadActionRef = useRef(onLoadAction);
+  const onUsersChangeRef = useRef(onUsersChange);
+  
+  if (onSaveActionRef.current !== onSaveAction) {
+    onSaveActionRef.current = onSaveAction;
+  }
+  if (onLoadActionRef.current !== onLoadAction) {
+    onLoadActionRef.current = onLoadAction;
+  }
+  if (onUsersChangeRef.current !== onUsersChange) {
+    onUsersChangeRef.current = onUsersChange;
+  }
+  
   const editorRef = useRef<HTMLDivElement>(null)
   const quillRefInternal = useRef<Quill | null>(null)
   const ydocRef = useRef<Y.Doc | null>(null)
   const providerRef = useRef<CustomWebsocketProvider | null>(null)
   const contentInitializedRef = useRef(false)
-  const {
-    data: session,
-    status
-  } = useSession()
+  const bindingRef = useRef<QuillBinding | null>(null)
+  const connectionInitializedRef = useRef(false)
+  const isUnmountingRef = useRef(false)
+  
+  const user = useAppSelector((state) => state.auth.user)
   
   const [isConnecting, setIsConnecting] = useState(true)
   const [usersInDocument, setUsersInDocument] = useState<DocumentUser[]>([])
@@ -48,29 +67,67 @@ export function TextEditor({ documentId, initialContent, onSaveAction, onLoadAct
     memoizedOnUsersChange()
   }, [memoizedOnUsersChange])
 
-  // Reset content initialization when document changes
   useEffect(() => {
     contentInitializedRef.current = false
+    connectionInitializedRef.current = false
   }, [documentId])
 
   useEffect(() => {
-    if (!editorRef.current || status !== 'authenticated' || !session) {
+    if (!editorRef.current || !user) {
       return;
     }
-    // Register QuillCursors module
-    Quill.register('modules/cursors', QuillCursors);
 
-    // Initialize Yjs document and WebSocket provider
+    if (connectionInitializedRef.current && providerRef.current) {
+      return;
+    }
+
+    const shouldCleanup = providerRef.current && connectionInitializedRef.current;
+    
+    const cleanup = (isUnmounting = false) => {
+      if (bindingRef.current) {
+        bindingRef.current.destroy();
+        bindingRef.current = null;
+      }
+      
+      if (quillRefInternal.current) {
+        const editorElement = quillRefInternal.current.root.parentElement;
+        if (editorElement) {
+          editorElement.innerHTML = '';
+        }
+        quillRefInternal.current = null;
+      }
+      
+      if (providerRef.current) {
+        if (isUnmounting || shouldCleanup) {
+          providerRef.current.leaveDocument();
+          providerRef.current.disconnect();
+        } else {
+          providerRef.current.temporaryDisconnect();
+        }
+        providerRef.current = null;
+      }
+      
+      if (ydocRef.current) {
+        ydocRef.current.destroy();
+        ydocRef.current = null;
+      }
+    };
+
+    if (shouldCleanup) {
+      cleanup();
+    }
+
+    if (editorRef.current) {
+      editorRef.current.innerHTML = '';
+    }
+
     ydocRef.current = new Y.Doc()
     providerRef.current = new CustomWebsocketProvider(
       Env.NEXT_PUBLIC_WEBSOCKET_URL,
       documentId,
       ydocRef.current,
-      session.user.accessToken,
-      {
-        yjsDebounceMs: 100,
-        awarenessDebounceMs: 50
-      }
+      user.accessToken!,
+      CustomWebsocketProvider.createOptimizedConfig('balanced')
     )
     
     providerRef.current.on('users-in-document', (data) => {
@@ -83,7 +140,6 @@ export function TextEditor({ documentId, initialContent, onSaveAction, onLoadAct
         const ytextContent = ytext.toString().trim();
                 
         if (ytextContent !== '') {
-          // Yjs has collaborative content, ensure it's saved to database
           const currentContent = quillRefInternal.current.root.innerHTML;
           onSaveAction(currentContent);
         }
@@ -124,12 +180,10 @@ export function TextEditor({ documentId, initialContent, onSaveAction, onLoadAct
       theme: 'snow'
     })
     
-    // Expose Quill instance to parent component
     if (quillRef) {
       quillRef.current = quillRefInternal.current
     }
 
-    // Expose flushUpdates method to parent component
     if (flushUpdatesRef) {
       flushUpdatesRef.current = () => {
         if (providerRef.current) {
@@ -138,47 +192,38 @@ export function TextEditor({ documentId, initialContent, onSaveAction, onLoadAct
       }
     }
 
-    // Set user information in awareness before creating QuillBinding
+    if (quillRef) {
+      (quillRef as any).getDebouncingStats = () => {
+        if (providerRef.current) {
+          return providerRef.current.getDebouncingStats();
+        }
+        return null;
+      };
+    }
+
     const userColor = `hsl(${Math.random() * 360}, 70%, 50%)`;
     providerRef.current.awareness.setLocalStateField('user', {
-      name: session.user.username,
+      name: user.username,
       color: userColor
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const binding = new QuillBinding(ytext, quillRefInternal.current, providerRef.current.awareness)
+    bindingRef.current = new QuillBinding(ytext, quillRefInternal.current, providerRef.current.awareness)
 
-    // Initialize content in Quill editor if we have initial content
     if (initialContent && initialContent.trim() !== '' && initialContent.trim() !== '<p><br></p>') {
-      // Set the content using Quill's setContents method
       const delta = quillRefInternal.current.clipboard.convert({ html: initialContent });
       quillRefInternal.current.setContents(delta);
     }
 
-    // Mark content as initialized to prevent duplicate initialization
     contentInitializedRef.current = true;
+    connectionInitializedRef.current = true;
 
-    // Cleanup on unmount
     return () => {
-      // Send leave-document message before disconnecting
-      if (providerRef.current) {
-        providerRef.current.leaveDocument();
-      }
-      
-      if (providerRef.current) {
-        providerRef.current.disconnect()
-      }
-      if (quillRefInternal.current) {
-        quillRefInternal.current = null
-      }
-      if (ydocRef.current) {
-        ydocRef.current.destroy()
-      }
-    }
+      isUnmountingRef.current = true;
+      cleanup(true);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documentId, onSaveAction, onLoadAction, session, status])
+  }, [documentId])
 
-  // Manual save function for parent component
   const manualSave = useCallback(async () => {
     if (quillRefInternal.current) {
       const content = quillRefInternal.current.root.innerHTML;
@@ -195,29 +240,58 @@ export function TextEditor({ documentId, initialContent, onSaveAction, onLoadAct
     }
   }, [onSaveAction]);
 
-  // Expose manual save to parent component
   useEffect(() => {
     if (manualSaveRef) {
       manualSaveRef.current = manualSave;
     }
   }, [manualSaveRef, manualSave]);
 
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (providerRef.current) {
+        providerRef.current.setTabHidden(document.hidden);
+      }
+    };
+
+    const handleWindowFocus = () => {
+      if (providerRef.current) {
+        providerRef.current.setTabHidden(false);
+      }
+    };
+
+    const handleWindowBlur = () => {
+      if (providerRef.current) {
+        providerRef.current.setTabHidden(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('blur', handleWindowBlur);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, []);
+
   return (
     <div className='space-y-0'>
-      {/* Connection status */}
       {isConnecting && (
         <div className="p-4 text-center text-muted-foreground">
           Connecting to real-time editor...
         </div>
       )}
       
-      {/* Editor */}
       <div 
         ref={editorRef} 
         style={{ 
-          minHeight: '600px',
+          minHeight: 'calc(100vh - 250px)',
         }} 
       />
     </div>
   )
-} 
+}
+
+export const TextEditor = memo(TextEditorComponent);
