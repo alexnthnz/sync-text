@@ -1,36 +1,7 @@
-import NextAuth, { type DefaultSession } from "next-auth"
+import NextAuth from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
 import { Env } from "./env"
 import dayjs from "dayjs"
-
-// Extend the session to include additional user data
-declare module "next-auth" {
-  interface Session {
-    user: {
-      id: string
-      username: string
-      email: string
-      token?: string
-      expire_at?: string
-    } & DefaultSession["user"]
-  }
-  
-  interface User {
-    id: string
-    username: string
-    email: string
-    token: string
-    expire_at: string
-  }
-
-  interface JWT {
-    id: string
-    username: string
-    email: string
-    token: string
-    expire_at: string
-  }
-}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -86,8 +57,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 id: userData.data.id,
                 email: userData.data.email,
                 username: userData.data.username,
-                token: data.data.token,
-                expire_at: data.data.expire_at,
+                accessToken: data.data.token,
+                expireAt: data.data.expire_at,
               }
             }
           }
@@ -110,8 +81,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.id = user.id as string
         token.username = user.username as string
         token.email = user.email as string
-        token.token = user.token as string
-        token.expire_at = user.expire_at as string
+        token.accessToken = user.accessToken as string
+        token.expireAt = user.expireAt as string
       }
       return token
     },
@@ -120,8 +91,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       session.user.id = token.id as string
       session.user.username = token.username as string
       session.user.email = token.email as string
-      session.user.token = token.token as string
-      session.user.expire_at = token.expire_at as string
+      session.user.accessToken = token.accessToken as string
+      session.user.expireAt = token.expireAt as string
       
       return session
     },
@@ -135,21 +106,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 // Helper function to get backend token from session
 export async function getBackendToken() {
   const session = await auth()
-  return session?.user?.token || null
+  return session?.user?.accessToken || null
 }
 
 // Helper function to check if token is expired
 export async function isTokenExpired() {
   const session = await auth()
-  if (!session?.user?.expire_at) {
+  if (!session?.user?.expireAt) {
     return true
   }
   
-  return dayjs(session.user.expire_at).isBefore(dayjs())
+  return dayjs(session.user.expireAt).isBefore(dayjs())
 }
 
 // Helper function to get token expiration time
 export async function getTokenExpiration() {
   const session = await auth()
-  return session?.user?.expire_at || null
+  return session?.user?.expireAt || null
 } 

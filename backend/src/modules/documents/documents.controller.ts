@@ -202,10 +202,15 @@ export class DocumentsController {
         return;
       }
 
-      ResponseHelper.success(res, null, 'Connected users retrieved successfully');
+      // Get active sessions for the document
+      const sessions = await global.webSocketService.getDocumentUsers(id!);
+      
+      ResponseHelper.success(res, { users: sessions }, 'Connected users retrieved successfully');
     } catch (error) {
       console.error('Get connected users error:', error);
       ResponseHelper.internalError(res, 'Failed to retrieve connected users', error);
     }
   }
+
+
 } 

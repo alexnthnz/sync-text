@@ -123,42 +123,11 @@
 
 /* Quill Editor Styles */
 @layer components {
-  .quill-editor-container .ql-toolbar {
-    @apply border-border bg-card;
+  .ql-toolbar.ql-snow {
+    border-radius: 5px;
   }
-  
-  .quill-editor-container .ql-container {
-    @apply border-border bg-background;
-  }
-  
-  .quill-editor-container .ql-editor {
-    @apply text-foreground;
-    font-family: var(--font-sans);
-  }
-  
-  .quill-editor-container .ql-editor.ql-blank::before {
-    @apply text-muted-foreground italic;
-  }
-  
-  .quill-editor-container .ql-toolbar .ql-stroke {
-    stroke: hsl(var(--foreground));
-  }
-  
-  .quill-editor-container .ql-toolbar .ql-fill,
-  .quill-editor-container .ql-toolbar .ql-stroke.ql-fill {
-    fill: hsl(var(--foreground));
-  }
-  
-  .quill-editor-container .ql-toolbar button:hover,
-  .quill-editor-container .ql-toolbar button:focus {
-    @apply bg-accent text-accent-foreground;
-  }
-  
-  .quill-editor-container .ql-toolbar button.ql-active {
-    @apply bg-primary text-primary-foreground;
-  }
-  
-  .quill-editor-container .ql-tooltip {
-    @apply bg-popover text-popover-foreground border-border shadow-lg;
+
+  .ql-editor {
+    min-height: 500px;
   }
 }

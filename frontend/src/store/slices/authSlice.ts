@@ -4,8 +4,8 @@ export interface User {
   id: string
   email: string
   username: string
-  token?: string
-  expire_at?: string
+  accessToken?: string
+  expireAt?: string
 }
 
 interface AuthState {

@@ -150,4 +150,6 @@ export class AuthController {
       ResponseHelper.internalError(res, 'Failed to logout', error);
     }
   }
+
+
 }

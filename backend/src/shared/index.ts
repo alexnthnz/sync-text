@@ -14,6 +14,9 @@ export * from './validation/common.validation';
 // Services
 export * from './services/redis.service';
 export * from './services/websocket.service';
+export * from './services/rate-limit.service';
+export * from './services/active-sessions.service';
+export * from './services/redis-pubsub.service';
 
 // Config (re-export for convenience)
 export {

@@ -7,7 +7,7 @@ import { PrismaClient } from '@prisma/client';
 
 // Import config and validate
 import config, { validateConfig, server, isDevelopment } from './config';
-import { RedisService, WebSocketService } from './shared';
+import { RedisService, WebSocketService, ActiveSessionsService, RedisPubSubService } from './shared';
 
 // Validate configuration on startup
 validateConfig();
@@ -19,6 +19,7 @@ export const prisma = new PrismaClient();
 async function initializeRedis() {
   try {
     await RedisService.initialize();
+    await RedisPubSubService.initialize();
     console.log('✅ Redis initialization completed');
   } catch (error) {
     console.error('❌ Redis initialization failed:', error);
@@ -59,21 +60,37 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Health check endpoint
-app.get('/health', (req, res) => {
-  const healthData = {
-    status: 'OK',
-    environment: server.nodeEnv,
-    uptime: process.uptime(),
-    memory: process.memoryUsage(),
-    version: process.version,
-    websocket: {
-      initialized: webSocketService.isInitialized(),
-      connections: webSocketService.getConnectionCount(),
-      documents: webSocketService.getDocumentCount(),
-    }
-  };
-  
-  ResponseHelper.success(res, healthData, 'Server is healthy');
+app.get('/health', async (req, res) => {
+  try {
+    const [rateLimitStats, documentCount, sessionStats] = await Promise.all([
+      webSocketService.getRateLimitStats(),
+      webSocketService.getDocumentCount(),
+      ActiveSessionsService.getSessionStats(),
+    ]);
+    
+    const healthData = {
+      status: 'OK',
+      environment: server.nodeEnv,
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+      version: process.version,
+      websocket: {
+        initialized: webSocketService.isInitialized(),
+        connections: webSocketService.getConnectionCount(),
+        documents: documentCount,
+        rateLimits: {
+          activeUsers: rateLimitStats.length,
+          config: webSocketService.getRateLimitConfig(),
+        },
+        sessions: sessionStats,
+      }
+    };
+    
+    ResponseHelper.success(res, healthData, 'Server is healthy');
+  } catch (error) {
+    console.error('Health check failed:', error);
+    ResponseHelper.error(res, 'Health check failed', 500);
+  }
 });
 
 // API Routes
@@ -94,6 +111,7 @@ process.on('SIGTERM', async () => {
   await Promise.all([
     prisma.$disconnect(),
     RedisService.close().catch(err => console.warn('Redis close error:', err)),
+    RedisPubSubService.close().catch(err => console.warn('Redis PubSub close error:', err)),
     webSocketService.close().catch(err => console.warn('WebSocket close error:', err))
   ]);
   process.exit(0);
@@ -105,6 +123,7 @@ process.on('SIGINT', async () => {
   await Promise.all([
     prisma.$disconnect(),
     RedisService.close().catch(err => console.warn('Redis close error:', err)),
+    RedisPubSubService.close().catch(err => console.warn('Redis PubSub close error:', err)),
     webSocketService.close().catch(err => console.warn('WebSocket close error:', err))
   ]);
   process.exit(0);

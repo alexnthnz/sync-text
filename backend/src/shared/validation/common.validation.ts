@@ -111,11 +111,6 @@ export const VALIDATION_CONSTANTS = {
   PAGINATION_ERROR: 'Invalid pagination parameters'
 } as const;
 
-// Utility function to create custom validation messages
-export const createValidationMessage = (field: string, rule: string): string => {
-  return `${field} ${rule}`;
-};
-
 // Common validation helpers
 export const isValidEmail = (email: string): boolean => {
   return VALIDATION_CONSTANTS.EMAIL_REGEX.test(email);

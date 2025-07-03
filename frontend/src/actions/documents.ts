@@ -21,8 +21,8 @@ async function getAuthHeaders(): Promise<HeadersInit> {
     "Content-Type": "application/json",
   }
 
-  if (session?.user?.token) {
-    headers.Authorization = `Bearer ${session.user.token}`
+  if (session?.user?.accessToken) {
+    headers.Authorization = `Bearer ${session.user.accessToken}`
   }
 
   return headers
@@ -32,7 +32,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 export async function getDocuments(queryData?: GetDocumentsQueryData): Promise<DocumentListResult> {
   try {
     const session = await auth()
-    if (!session?.user?.token) {
+    if (!session?.user?.accessToken) {
       return {
         success: false,
         message: "Authentication required",
@@ -97,7 +97,7 @@ export async function getDocuments(queryData?: GetDocumentsQueryData): Promise<D
 export async function createDocument(data: CreateDocumentFormData): Promise<DocumentResult> {
   try {
     const session = await auth()
-    if (!session?.user?.token) {
+    if (!session?.user?.accessToken) {
       return {
         success: false,
         message: "Authentication required",
@@ -141,7 +141,7 @@ export async function createDocument(data: CreateDocumentFormData): Promise<Docu
 export async function getDocument(id: string): Promise<DocumentResult> {
   try {
     const session = await auth()
-    if (!session?.user?.token) {
+    if (!session?.user?.accessToken) {
       return {
         success: false,
         message: "Authentication required",
@@ -193,7 +193,7 @@ export async function getDocument(id: string): Promise<DocumentResult> {
 export async function updateDocument(id: string, data: UpdateDocumentFormData): Promise<DocumentResult> {
   try {
     const session = await auth()
-    if (!session?.user?.token) {
+    if (!session?.user?.accessToken) {
       return {
         success: false,
         message: "Authentication required",
@@ -250,7 +250,7 @@ export async function updateDocument(id: string, data: UpdateDocumentFormData): 
 export async function deleteDocument(id: string): Promise<DocumentResult> {
   try {
     const session = await auth()
-    if (!session?.user?.token) {
+    if (!session?.user?.accessToken) {
       return {
         success: false,
         message: "Authentication required",
@@ -302,7 +302,7 @@ export async function deleteDocument(id: string): Promise<DocumentResult> {
 export async function addCollaborator(id: string, data: AddCollaboratorFormData): Promise<DocumentResult> {
   try {
     const session = await auth()
-    if (!session?.user?.token) {
+    if (!session?.user?.accessToken) {
       return {
         success: false,
         message: "Authentication required",
@@ -371,7 +371,7 @@ export async function addCollaborator(id: string, data: AddCollaboratorFormData)
 export async function removeCollaborator(id: string, collaboratorId: string): Promise<DocumentResult> {
   try {
     const session = await auth()
-    if (!session?.user?.token) {
+    if (!session?.user?.accessToken) {
       return {
         success: false,
         message: "Authentication required",

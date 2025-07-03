@@ -18,14 +18,14 @@ const sessionUserToReduxUser = (sessionUser: {
   id: string
   email: string
   username: string
-  token: string
-  expire_at: string
+  accessToken: string
+  expireAt: string
 }): User => ({
   id: sessionUser.id,
   email: sessionUser.email,
   username: sessionUser.username,
-  token: sessionUser.token,
-  expire_at: sessionUser.expire_at,
+  accessToken: sessionUser.accessToken,
+  expireAt: sessionUser.expireAt,
 })
 
 const DefaultLayout = ({ children }: DefaultLayoutProps) => {

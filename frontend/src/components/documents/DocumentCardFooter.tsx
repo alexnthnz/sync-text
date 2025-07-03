@@ -7,7 +7,7 @@ interface DocumentCardFooterProps {
 
 export function DocumentCardFooter({ isOwner }: DocumentCardFooterProps) {
   return (
-    <div className="flex items-center justify-between px-6 pb-6">
+    <div className="flex items-center justify-between px-6">
       <div className="flex items-center gap-2">
         <Badge variant="secondary" className="text-xs">
           <FileText className="w-3 h-3 mr-1" />
