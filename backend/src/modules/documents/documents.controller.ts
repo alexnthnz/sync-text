@@ -3,6 +3,7 @@ import { DocumentsService } from './documents.service';
 import { CreateDocumentRequest, UpdateDocumentRequest, AddCollaboratorRequest } from './documents.types';
 import { ResponseHelper } from '../../shared/utils/response.utils';
 import { QueueService } from '../../shared/services/queue.service';
+import { RedisService } from '../../shared/services/redis.service';
 
 export class DocumentsController {
   /**
@@ -99,7 +100,52 @@ export class DocumentsController {
       const { id } = req.params;
       const { title, content }: UpdateDocumentRequest = req.body;
 
-      // Add job to queue instead of processing immediately
+      const document = await DocumentsService.getDocumentById(id!, req.userId!);
+      if (!document) {
+        ResponseHelper.notFound(res, 'Document not found or access denied');
+        return;
+      }
+
+      const hasEditPermission = await DocumentsService.checkUserPermission(id!, req.userId!, ['owner', 'editor']);
+      if (!hasEditPermission) {
+        ResponseHelper.forbidden(res, 'Insufficient permissions to edit this document');
+        return;
+      }
+
+      if (title === undefined && content === undefined) {
+        ResponseHelper.badRequest(res, 'At least one field (title or content) must be provided');
+        return;
+      }
+
+      // ✅ CHECK FOR CONTENT CHANGES BEFORE QUEUING
+      const changeCheck = await RedisService.hasDocumentContentChanged(
+        id!, 
+        content || document.content, 
+        title || document.title
+      );
+
+      if (!changeCheck.hasChanged) {
+        console.log(`⏭️ Skipping update for document ${id} - no content changes detected`);
+        ResponseHelper.success(
+          res,
+          {
+            jobId: null,
+            message: 'No changes detected - document is already up to date',
+            status: 'skipped',
+            reason: 'no_changes',
+          },
+          'No changes detected - document is already up to date'
+        );
+        return;
+      }
+
+      console.log(`📝 Content changes detected for document ${id}:`, {
+        contentChanged: content !== undefined && content !== changeCheck.cachedContent,
+        titleChanged: title !== undefined && title !== changeCheck.cachedTitle,
+        previousContent: changeCheck.cachedContent?.substring(0, 100) + '...',
+        newContent: content?.substring(0, 100) + '...',
+      });
+
       const jobId = await QueueService.addDocumentUpdateJob({
         documentId: id!,
         userId: req.userId!,
@@ -111,10 +157,17 @@ export class DocumentsController {
           clientId: req.headers['x-client-id'] as string,
           sessionId: req.headers['x-session-id'] as string,
           timestamp: new Date().toISOString(),
+          permissionVerified: true,
+          verifiedAt: new Date().toISOString(),
+          changeDetection: {
+            hasChanged: true,
+            contentChanged: content !== undefined && content !== changeCheck.cachedContent,
+            titleChanged: title !== undefined && title !== changeCheck.cachedTitle,
+            previousVersion: changeCheck.cachedContent ? 'cached' : 'none',
+          },
         },
       });
 
-      // Return immediate response with job ID
       ResponseHelper.success(
         res, 
         { 
@@ -213,14 +266,12 @@ export class DocumentsController {
     try {
       const { id } = req.params;
 
-      // First verify user has access to the document
       const document = await DocumentsService.getDocumentById(id!, req.userId!);
       if (!document) {
         ResponseHelper.notFound(res, 'Document not found or access denied');
         return;
       }
 
-      // Get active sessions for the document
       const sessions = await global.webSocketService.getDocumentUsers(id!);
       
       ResponseHelper.success(res, { users: sessions }, 'Connected users retrieved successfully');

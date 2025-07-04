@@ -1,6 +1,7 @@
 import { QueueService, QueueJob, DocumentUpdateJob } from './queue.service';
 import { DocumentsService } from '../../modules/documents/documents.service';
 import { EditHistoryService } from '../../modules/edit-history/edit-history.service';
+import { RedisService } from './redis.service';
 
 export class QueueWorkerService {
   private static isRunning = false;
@@ -51,7 +52,7 @@ export class QueueWorkerService {
       const job = await QueueService.processNextJob();
       
       if (!job) {
-        return; // No jobs in queue
+        return;
       }
 
       await this.handleJob(job);
@@ -85,17 +86,19 @@ export class QueueWorkerService {
   private static async handleDocumentUpdateJob(job: QueueJob<DocumentUpdateJob>): Promise<void> {
     const { documentId, userId, updates, metadata } = job.data;
 
-    console.log(`📝 Processing document update for document ${documentId} by user ${userId}`);
-
     try {
-      // Update the document
       const updatedDocument = await DocumentsService.updateDocument(documentId, userId, updates);
 
       if (!updatedDocument) {
         throw new Error('Document update failed - document not found or insufficient permissions');
       }
 
-      // Record edit history only after successful document update
+      await RedisService.cacheDocumentContent(
+        documentId, 
+        updatedDocument.content, 
+        updatedDocument.title
+      );
+
       const operation = {
         type: 'document_update',
         changes: {
@@ -103,7 +106,12 @@ export class QueueWorkerService {
           content: updates.content !== undefined ? { changed: true, value: updates.content } : { changed: false },
         },
         timestamp: new Date().toISOString(),
-        metadata: metadata || {},
+        metadata: {
+          ...metadata,
+          jobId: job.id,
+          processedAt: new Date().toISOString(),
+          cachedAt: new Date().toISOString(),
+        },
       };
 
       await EditHistoryService.createEditHistory(userId, {
@@ -112,13 +120,12 @@ export class QueueWorkerService {
         version: Date.now(),
       });
 
-      // Mark job as completed
       await QueueService.completeJob(job.id);
 
-      console.log(`✅ Successfully processed document update job ${job.id}`);
+      console.log(`✅ Successfully processed document update job ${job.id} and cached content`);
     } catch (error) {
       console.error(`❌ Failed to process document update job ${job.id}:`, error);
-      throw error; // Re-throw to trigger job failure handling
+      throw error;
     }
   }
 

@@ -31,11 +31,7 @@ interface ProtectedRequest extends Request {
  * Middleware for protected routes that require authentication
  * Assumes authenticateToken middleware has already run
  */
-export const requireAuth = (
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-): void => {
+export const requireAuth = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
   const userId = req.user?.id;
 
   if (!userId) {
@@ -45,9 +41,9 @@ export const requireAuth = (
 
   // Add convenience property for direct access to userId
   req.userId = userId;
-  
+
   next();
 };
 
 // Export the type for use in controllers
-export { ProtectedRequest }; 
+export { ProtectedRequest };

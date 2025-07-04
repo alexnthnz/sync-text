@@ -1,14 +1,15 @@
-import { 
-  CreateDocumentRequest, 
-  UpdateDocumentRequest, 
+import {
+  CreateDocumentRequest,
+  UpdateDocumentRequest,
   AddCollaboratorRequest,
   DocumentResponse,
   DocumentListResponse,
   DocumentCollaborator,
-  UserRole
+  UserRole,
 } from './documents.types';
 import { EditHistoryService } from '../edit-history/edit-history.service';
 import { PrismaService } from '../../shared/services/prisma.service';
+import { RedisService } from '../../shared/services/redis.service';
 
 const prisma = PrismaService.getClient();
 
@@ -17,7 +18,7 @@ export class DocumentsService {
    * Get documents based on filter criteria with pagination
    */
   static async getDocuments(
-    userId: string, 
+    userId: string,
     filter: 'owned' | 'accessible' | 'shared' = 'accessible',
     search?: string,
     limit: number = 20,
@@ -31,7 +32,7 @@ export class DocumentsService {
   }> {
     // Build where clause based on filter
     let whereClause: any;
-    
+
     if (filter === 'owned') {
       // Only documents owned by the user
       whereClause = { ownerId: userId };
@@ -146,9 +147,12 @@ export class DocumentsService {
   /**
    * Create a new document
    */
-  static async createDocument(userId: string, data: CreateDocumentRequest): Promise<DocumentResponse> {
+  static async createDocument(
+    userId: string,
+    data: CreateDocumentRequest
+  ): Promise<DocumentResponse> {
     // Create document and owner relationship in a transaction
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async tx => {
       // Create the document
       const document = await tx.document.create({
         data: {
@@ -209,9 +213,16 @@ export class DocumentsService {
   /**
    * Get document details by ID
    */
-  static async getDocumentById(documentId: string, userId: string): Promise<DocumentResponse | null> {
+  static async getDocumentById(
+    documentId: string,
+    userId: string
+  ): Promise<DocumentResponse | null> {
     // Check if user has access to this document (owner or collaborator)
-    const hasAccess = await this.checkUserPermission(documentId, userId, ['owner', 'editor', 'viewer']);
+    const hasAccess = await this.checkUserPermission(documentId, userId, [
+      'owner',
+      'editor',
+      'viewer',
+    ]);
     if (!hasAccess) {
       return null;
     }
@@ -244,7 +255,7 @@ export class DocumentsService {
       return null;
     }
 
-    return {
+    const result = {
       id: document.id,
       title: document.title,
       content: document.content,
@@ -258,14 +269,26 @@ export class DocumentsService {
         user: du.user,
       })),
     };
+
+    // ✅ WARM UP CACHE ASYNCHRONOUSLY
+    // Don't await this to avoid blocking the response
+    RedisService.warmDocumentCache(documentId, document.content, document.title)
+      .then(() => {
+        console.log(`🔥 Warmed up cache for document ${documentId}`);
+      })
+      .catch(error => {
+        console.error(`Failed to warm up cache for document ${documentId}:`, error);
+      });
+
+    return result;
   }
 
   /**
    * Update document
    */
   static async updateDocument(
-    documentId: string, 
-    userId: string, 
+    documentId: string,
+    userId: string,
     data: UpdateDocumentRequest
   ): Promise<DocumentResponse | null> {
     // Check if user has edit permission (owner or editor)
@@ -318,10 +341,10 @@ export class DocumentsService {
         user: du.user,
       })),
     };
-    
+
     // Edit history is now recorded by the queue worker after successful processing
     // This ensures edit history is only recorded when the update actually succeeds
-    
+
     return result;
   }
 
@@ -343,6 +366,15 @@ export class DocumentsService {
       where: { id: documentId },
     });
 
+    // ✅ INVALIDATE CACHE AFTER DELETION
+    RedisService.invalidateDocumentCache(documentId)
+      .then(() => {
+        console.log(`🗑️ Invalidated cache for deleted document ${documentId}`);
+      })
+      .catch(error => {
+        console.error(`Failed to invalidate cache for deleted document ${documentId}:`, error);
+      });
+
     return true;
   }
 
@@ -350,8 +382,8 @@ export class DocumentsService {
    * Add collaborator to document
    */
   static async addCollaborator(
-    documentId: string, 
-    ownerId: string, 
+    documentId: string,
+    ownerId: string,
     data: AddCollaboratorRequest
   ): Promise<DocumentCollaborator | null> {
     // Check if requester is the document owner
@@ -398,8 +430,8 @@ export class DocumentsService {
     }
 
     // Add collaborator (role can only be 'editor' or 'viewer', not 'owner')
-    const role = data.role === 'owner' ? 'editor' : (data.role || 'editor');
-    
+    const role = data.role === 'owner' ? 'editor' : data.role || 'editor';
+
     const collaborator = await prisma.documentUser.create({
       data: {
         documentId,
@@ -428,8 +460,8 @@ export class DocumentsService {
    * Remove collaborator from document
    */
   static async removeCollaborator(
-    documentId: string, 
-    ownerId: string, 
+    documentId: string,
+    ownerId: string,
     collaboratorId: string
   ): Promise<boolean> {
     // Check if requester is the document owner
@@ -473,8 +505,8 @@ export class DocumentsService {
    * Check if user has permission to perform action on document
    */
   static async checkUserPermission(
-    documentId: string, 
-    userId: string, 
+    documentId: string,
+    userId: string,
     requiredRoles: UserRole[]
   ): Promise<boolean> {
     // Check if document exists
@@ -522,8 +554,12 @@ export class DocumentsService {
       const operation = {
         type: 'document_update',
         changes: {
-          title: data.title !== undefined ? { changed: true, value: data.title } : { changed: false },
-          content: data.content !== undefined ? { changed: true, value: data.content } : { changed: false },
+          title:
+            data.title !== undefined ? { changed: true, value: data.title } : { changed: false },
+          content:
+            data.content !== undefined
+              ? { changed: true, value: data.content }
+              : { changed: false },
         },
         timestamp: new Date().toISOString(),
       };
@@ -538,4 +574,4 @@ export class DocumentsService {
       console.error('Failed to record edit history:', error);
     }
   }
-} 
+}

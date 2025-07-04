@@ -78,10 +78,11 @@ app.use(express.urlencoded({ extended: true }));
 // Health check endpoint
 app.get('/health', async (req, res) => {
   try {
-    const [rateLimitStats, documentCount, sessionStats] = await Promise.all([
+    const [rateLimitStats, documentCount, sessionStats, cacheStats] = await Promise.all([
       webSocketService.getRateLimitStats(),
       webSocketService.getDocumentCount(),
       ActiveSessionsService.getSessionStats(),
+      RedisService.getCacheStats(),
     ]);
     
     const healthData = {
@@ -99,6 +100,11 @@ app.get('/health', async (req, res) => {
           config: webSocketService.getRateLimitConfig(),
         },
         sessions: sessionStats,
+      },
+      cache: {
+        totalCachedDocuments: cacheStats.totalCachedDocuments,
+        cacheHitRate: cacheStats.cacheHitRate,
+        cacheSize: cacheStats.cacheSize,
       }
     };
     

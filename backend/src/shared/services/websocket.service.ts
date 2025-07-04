@@ -28,8 +28,8 @@ export interface WebSocketMessage {
 
 export class WebSocketService {
   private wss: WebSocketServer | null = null;
-  private socketConnections: Map<string, AuthenticatedWebSocket> = new Map(); 
-  
+  private socketConnections: Map<string, AuthenticatedWebSocket> = new Map();
+
   private readonly rateLimitConfigs: Map<string, RateLimitConfig> = new Map([
     ['yjs-update', { maxMessages: 50, windowMs: 1000, blockDurationMs: 5000 }],
     ['awareness-update', { maxMessages: 30, windowMs: 1000, blockDurationMs: 3000 }],
@@ -51,13 +51,13 @@ export class WebSocketService {
       RateLimitService.cleanupExpiredData().catch(error => {
         console.error('Failed to cleanup rate limit data:', error);
       });
-    }, 300000); 
+    }, 300000);
 
     setInterval(() => {
       ActiveSessionsService.cleanupStaleSessions().catch(error => {
         console.error('Failed to cleanup stale sessions:', error);
       });
-    }, 600000); 
+    }, 600000);
   }
 
   /**
@@ -203,11 +203,14 @@ export class WebSocketService {
 
     await RedisPubSubService.publish(`channel:${documentId}`, {
       type: 'user-joined',
-      data: { user: { userId: ws.userId, username: ws.username } }
+      data: { user: { userId: ws.userId, username: ws.username } },
     });
     console.log(`📡 Published user-joined event for ${ws.username} to channel:${documentId}`);
 
-    await RedisPubSubService.subscribe(`channel:${documentId}`, this.handlePubSubMessage.bind(this));
+    await RedisPubSubService.subscribe(
+      `channel:${documentId}`,
+      this.handlePubSubMessage.bind(this)
+    );
 
     const sessions = await ActiveSessionsService.getDocumentSessions(documentId);
     const users = sessions.map(session => ({
@@ -232,7 +235,7 @@ export class WebSocketService {
 
     await RedisPubSubService.publish(`channel:${documentId}`, {
       type: 'user-left',
-      data: { user: { userId: ws.userId, username: ws.username } }
+      data: { user: { userId: ws.userId, username: ws.username } },
     });
     console.log(`📡 Published user-left event for ${ws.username} to channel:${documentId}`);
 
@@ -295,7 +298,9 @@ export class WebSocketService {
    */
   private handleDisconnect(ws: AuthenticatedWebSocket): void {
     if (ws.userId && ws.socketId) {
-      console.log(`❌ WebSocket disconnected: ${ws.username} (${ws.userId}) with socket_id: ${ws.socketId}`);
+      console.log(
+        `❌ WebSocket disconnected: ${ws.username} (${ws.userId}) with socket_id: ${ws.socketId}`
+      );
 
       this.socketConnections.delete(ws.socketId);
 
@@ -331,7 +336,7 @@ export class WebSocketService {
     await RedisPubSubService.publish(`channel:${documentId}`, { type, data });
 
     const sessions = await ActiveSessionsService.getDocumentSessions(documentId);
-    
+
     for (const session of sessions) {
       if (excludeUserId && session.userId === excludeUserId) {
         continue;
@@ -436,7 +441,7 @@ export class WebSocketService {
   private async handlePubSubMessage(message: PubSubMessage, channel: string) {
     const documentId = channel.replace('channel:', '');
     console.log(`📡 Received Pub/Sub message: ${message.type} for document ${documentId}`);
-    
+
     for (const [, socket] of this.socketConnections.entries()) {
       if (socket.documentId === documentId && socket.readyState === WebSocket.OPEN) {
         this.sendMessage(socket, message.type, message.data);

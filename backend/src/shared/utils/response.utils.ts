@@ -1,11 +1,11 @@
 import { Response } from 'express';
-import { 
-  ApiResponse, 
-  SuccessResponse, 
-  ErrorResponse, 
-  ResponseMeta, 
+import {
+  ApiResponse,
+  SuccessResponse,
+  ErrorResponse,
+  ResponseMeta,
   ResponseError,
-  PaginationParams 
+  PaginationParams,
 } from '../types/response.types';
 import { isDevelopment } from '../../config';
 
@@ -24,7 +24,7 @@ export class ResponseHelper {
       data,
       message,
       status_code: statusCode,
-      ...(meta && Object.keys(meta).length > 0 && { meta })
+      ...(meta && Object.keys(meta).length > 0 && { meta }),
     };
 
     res.status(statusCode).json(response);
@@ -46,13 +46,13 @@ export class ResponseHelper {
       message,
       details,
       field,
-      ...(isDevelopment() && details?.stack && { stack: details.stack })
+      ...(isDevelopment() && details?.stack && { stack: details.stack }),
     };
 
     const response: ErrorResponse = {
       error,
       message,
-      status_code: statusCode
+      status_code: statusCode,
     };
 
     res.status(statusCode).json(response);
@@ -79,14 +79,14 @@ export class ResponseHelper {
       total,
       totalPages,
       hasNext,
-      hasPrev
+      hasPrev,
     };
 
     const response: SuccessResponse<T[]> = {
       data,
       message,
       status_code: 200,
-      meta
+      meta,
     };
 
     res.status(200).json(response);
@@ -109,7 +109,7 @@ export class ResponseHelper {
   static noContent(res: Response, message: string = 'Operation completed successfully'): void {
     const response: ApiResponse = {
       message,
-      status_code: 204
+      status_code: 204,
     };
 
     res.status(204).json(response);
@@ -118,7 +118,12 @@ export class ResponseHelper {
   /**
    * Common error responses
    */
-  static badRequest(res: Response, message: string = 'Bad request', details?: any, field?: string): void {
+  static badRequest(
+    res: Response,
+    message: string = 'Bad request',
+    details?: any,
+    field?: string
+  ): void {
     this.error(res, message, 400, 'BAD_REQUEST', details, field);
   }
 
@@ -138,11 +143,20 @@ export class ResponseHelper {
     this.error(res, message, 409, 'CONFLICT');
   }
 
-  static validationError(res: Response, message: string = 'Validation failed', field?: string, details?: any): void {
+  static validationError(
+    res: Response,
+    message: string = 'Validation failed',
+    field?: string,
+    details?: any
+  ): void {
     this.error(res, message, 422, 'VALIDATION_ERROR', details, field);
   }
 
-  static internalError(res: Response, message: string = 'Internal server error', details?: any): void {
+  static internalError(
+    res: Response,
+    message: string = 'Internal server error',
+    details?: any
+  ): void {
     this.error(res, message, 500, 'INTERNAL_ERROR', details);
   }
-} 
+}

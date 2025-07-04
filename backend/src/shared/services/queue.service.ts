@@ -23,6 +23,14 @@ export interface DocumentUpdateJob {
     clientId?: string;
     sessionId?: string;
     timestamp: string;
+    permissionVerified?: boolean;
+    verifiedAt?: string;
+    changeDetection?: {
+      hasChanged: boolean;
+      contentChanged?: boolean;
+      titleChanged?: boolean;
+      previousVersion?: string;
+    };
   };
 }
 

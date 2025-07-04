@@ -29,7 +29,6 @@ export class RateLimitService {
       const client = RedisService.getClient();
       const now = Date.now();
       
-      // Check if user is currently blocked
       const blockKey = `${this.BLOCK_PREFIX}:${userId}:${messageType}`;
       const blockedUntil = await client.get(blockKey);
       
@@ -43,22 +42,17 @@ export class RateLimitService {
             blockedUntil: blockTime,
           };
         } else {
-          // Block has expired, remove it
           await client.del(blockKey);
         }
       }
 
-      // Get current count for the sliding window
       const key = `${this.RATE_LIMIT_PREFIX}:${userId}:${messageType}`;
       const windowStart = now - config.windowMs;
       
-      // Use Redis sorted set to track requests with timestamps
       const requests = await client.zRangeByScore(key, windowStart, '+inf');
       const currentCount = requests.length;
 
-      // Check if limit exceeded
       if (currentCount >= config.maxMessages) {
-        // Set block
         const blockUntil = now + config.blockDurationMs;
         await client.setEx(blockKey, Math.ceil(config.blockDurationMs / 1000), blockUntil.toString());
         
@@ -77,7 +71,6 @@ export class RateLimitService {
       };
     } catch (error) {
       console.error('Rate limit check failed:', error);
-      // If Redis fails, allow the request to prevent service disruption
       return {
         isLimited: false,
         remaining: 999,
@@ -95,14 +88,11 @@ export class RateLimitService {
       const now = Date.now();
       const key = `${this.RATE_LIMIT_PREFIX}:${userId}:${messageType}`;
       
-      // Add current timestamp to sorted set
       await client.zAdd(key, { score: now, value: now.toString() });
       
-      // Set expiration for the key (window size + some buffer)
       await client.expire(key, 7200); // 2 hours
     } catch (error) {
       console.error('Rate limit increment failed:', error);
-      // Don't throw error to prevent service disruption
     }
   }
 
@@ -113,15 +103,12 @@ export class RateLimitService {
     try {
       const client = RedisService.getClient();
       
-      // Get all rate limit keys for this user
       const pattern = `${this.RATE_LIMIT_PREFIX}:${userId}:*`;
       const keys = await client.keys(pattern);
       
-      // Get all block keys for this user
       const blockPattern = `${this.BLOCK_PREFIX}:${userId}:*`;
       const blockKeys = await client.keys(blockPattern);
       
-      // Delete all keys
       if (keys.length > 0) {
         await client.del(keys);
       }
@@ -148,11 +135,9 @@ export class RateLimitService {
       const client = RedisService.getClient();
       const stats: { userId: string; messageType: string; count: number; blockedUntil?: number }[] = [];
       
-      // Get all rate limit keys
       const rateLimitKeys = await client.keys(`${this.RATE_LIMIT_PREFIX}:*`);
       const blockKeys = await client.keys(`${this.BLOCK_PREFIX}:*`);
       
-      // Create a map of block times
       const blockMap = new Map<string, number>();
       for (const blockKey of blockKeys) {
         const blockedUntil = await client.get(blockKey);
@@ -165,13 +150,11 @@ export class RateLimitService {
         }
       }
       
-      // Process rate limit keys
       for (const key of rateLimitKeys) {
         const parts = key.split(':');
         const userId = parts[2];
         const messageType = parts[3];
         
-        // Skip if we don't have valid parts
         if (!userId || !messageType) {
           continue;
         }
@@ -208,22 +191,18 @@ export class RateLimitService {
       const client = RedisService.getClient();
       const now = Date.now();
       
-      // Get all rate limit keys
       const rateLimitKeys = await client.keys(`${this.RATE_LIMIT_PREFIX}:*`);
       
       for (const key of rateLimitKeys) {
-        // Remove entries older than 1 hour
         const cutoff = now - 3600000; // 1 hour
         await client.zRemRangeByScore(key, '-inf', cutoff);
-        
-        // If the set is empty, delete the key
+
         const count = await client.zCard(key);
         if (count === 0) {
           await client.del(key);
         }
       }
       
-      // Block keys have TTL, so they'll expire automatically
     } catch (error) {
       console.error('Failed to cleanup expired rate limit data:', error);
     }

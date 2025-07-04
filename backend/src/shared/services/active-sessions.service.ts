@@ -46,8 +46,9 @@ export class ActiveSessionsService {
       }
 
       // Add user to the document's session hash
+      // doc://   key: session:documentId
       await client.hSet(key, userId, JSON.stringify(sessionData));
-      
+
       // Set TTL for the entire hash
       await client.expire(key, this.SESSION_TTL);
 
@@ -69,7 +70,7 @@ export class ActiveSessionsService {
       // Get user info before removing for logging
       const sessionData = await client.hGet(key, userId);
       let username = 'unknown';
-      
+
       if (sessionData) {
         try {
           const session = JSON.parse(sessionData);
@@ -114,7 +115,7 @@ export class ActiveSessionsService {
 
       // Update the session
       await client.hSet(key, userId, JSON.stringify(session));
-      
+
       // Refresh TTL
       await client.expire(key, this.SESSION_TTL);
     } catch (error) {
@@ -142,7 +143,7 @@ export class ActiveSessionsService {
 
       // Update the session
       await client.hSet(key, userId, JSON.stringify(session));
-      
+
       // Refresh TTL
       await client.expire(key, this.SESSION_TTL);
     } catch (error) {
@@ -236,7 +237,7 @@ export class ActiveSessionsService {
     try {
       const client = RedisService.getClient();
       const pattern = `${this.SESSION_PREFIX}:*`;
-      
+
       const keys = await client.keys(pattern);
       return keys.map(key => key.replace(`${this.SESSION_PREFIX}:`, ''));
     } catch (error) {
@@ -252,7 +253,7 @@ export class ActiveSessionsService {
     try {
       const client = RedisService.getClient();
       const pattern = `${this.SESSION_PREFIX}:*`;
-      
+
       const keys = await client.keys(pattern);
       let totalSessions = 0;
 
@@ -291,7 +292,7 @@ export class ActiveSessionsService {
       const pattern = `${this.SESSION_PREFIX}:*`;
       const keys = await client.keys(pattern);
       const now = Date.now();
-      const staleThreshold = now - (this.SESSION_TTL * 1000);
+      const staleThreshold = now - this.SESSION_TTL * 1000;
 
       for (const key of keys) {
         const sessionsHash = await client.hGetAll(key);
@@ -369,4 +370,4 @@ export class ActiveSessionsService {
       throw error;
     }
   }
-} 
+}
