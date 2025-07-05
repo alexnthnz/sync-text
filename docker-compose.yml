@@ -5,7 +5,6 @@ services:
   postgres:
     image: postgres:16.8
     container_name: sync-text-postgres
-    restart: unless-stopped
     environment:
       POSTGRES_DB: sync_text_db
       POSTGRES_USER: postgres
@@ -29,7 +28,6 @@ services:
   redis:
     image: redis/redis-stack:latest
     container_name: sync-text-redis
-    restart: unless-stopped
     environment:
       REDIS_ARGS: "--requirepass redis123"
     ports:
